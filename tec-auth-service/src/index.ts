@@ -10,15 +10,6 @@ import profileRoutes from './routes/profile.routes';
 
 dotenv.config();
 
-// Validate required environment variables
-const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`❌ Error: ${envVar} is required but not set in environment variables`);
-    process.exit(1);
-  }
-}
-
 const app: Application = express();
 const PORT = process.env.PORT || 5001;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
@@ -26,10 +17,7 @@ const serviceStartTime = Date.now();
 
 // Security middleware
 app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
-if (corsOrigin === '*' && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️  WARNING: CORS_ORIGIN is set to wildcard "*" in production. Set CORS_ORIGIN to your frontend URL.');
-}
+const corsOrigin = process.env.CORS_ORIGIN || '*';
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -42,27 +30,16 @@ app.use(express.urlencoded({ extended: true }));
 // Health check
 app.get('/health', (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
-  
-  interface HealthResponse {
-    status: string;
-    service: string;
-    timestamp: string;
-    uptime: number;
-    version: string;
-  }
-  
-  const response: HealthResponse = {
+  res.json({
     status: 'ok',
     service: 'auth-service',
     timestamp: new Date().toISOString(),
     uptime,
     version: SERVICE_VERSION,
-  };
-  
-  res.json(response);
+  });
 });
 
-// Routes — mounted at both paths for local dev and Vercel serverless compatibility
+// Routes
 app.use('/auth', authRoutes);
 app.use('/subscriptions', subscriptionRoutes);
 app.use('/kyc', kycRoutes);
@@ -75,7 +52,7 @@ app.use('/api/security', securityRoutes);
 app.use('/api/profile', profileRoutes);
 
 // 404 handler
-app.use('*', (req, res) => {
+app.use('*', (_req, res) => {
   res.status(404).json({
     success: false,
     error: {
@@ -97,8 +74,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🔐 Auth Service running on port ${PORT}`);
-});
+// ✅ Vercel fix: only listen in local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🔐 Auth Service running on port ${PORT}`);
+  });
+}
 
 export default app;
