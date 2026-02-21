@@ -193,7 +193,7 @@ export const getWalletTransactions = async (req: Request, res: Response): Promis
     const status = req.query.status as string;
 
     // Build where clause
-    const where: any = { wallet_id: id };
+    const where: { wallet_id: string; type?: string; status?: string } = { wallet_id: id };
     if (type) where.type = type;
     if (status) where.status = status;
 

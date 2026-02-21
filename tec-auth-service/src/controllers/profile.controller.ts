@@ -119,7 +119,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    const updateData: any = {};
+    const updateData: { email?: string; username?: string } = {};
     if (email) updateData.email = email;
     if (username) updateData.username = username;
 

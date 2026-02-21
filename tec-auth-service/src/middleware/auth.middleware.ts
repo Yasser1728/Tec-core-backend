@@ -39,7 +39,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     }
 
     // Attach userId to request
-    (req as any).userId = decoded.userId;
+    req.userId = decoded.userId;
     next();
   } catch (error) {
     console.error('Authentication error:', error);
