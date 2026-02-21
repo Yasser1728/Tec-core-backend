@@ -13,10 +13,7 @@ const serviceStartTime = Date.now();
 
 // Security middleware
 app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
-if (corsOrigin === '*' && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️  WARNING: CORS_ORIGIN is set to wildcard "*" in production. Set CORS_ORIGIN to your frontend URL.');
-}
+const corsOrigin = process.env.CORS_ORIGIN || '*';
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -29,32 +26,21 @@ app.use(express.urlencoded({ extended: true }));
 // Health check
 app.get('/health', (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
-  
-  interface HealthResponse {
-    status: string;
-    service: string;
-    timestamp: string;
-    uptime: number;
-    version: string;
-  }
-  
-  const response: HealthResponse = {
+  res.json({
     status: 'ok',
     service: 'wallet-service',
     timestamp: new Date().toISOString(),
     uptime,
     version: SERVICE_VERSION,
-  };
-  
-  res.json(response);
+  });
 });
 
-// Routes — mounted at both paths for local dev and Vercel serverless compatibility
+// Routes
 app.use('/wallets', walletRoutes);
 app.use('/api/wallets', walletRoutes);
 
 // 404 handler
-app.use('*', (req, res) => {
+app.use('*', (_req, res) => {
   res.status(404).json({
     success: false,
     error: {
@@ -76,8 +62,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`💰 Wallet Service running on port ${PORT}`);
-});
+// ✅ Vercel fix: only listen in local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`💰 Wallet Service running on port ${PORT}`);
+  });
+}
 
 export default app;
