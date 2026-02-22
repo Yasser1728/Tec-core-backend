@@ -12,13 +12,10 @@ jobs:
   deploy-apps:
     name: Deploy TEC Apps
     runs-on: ubuntu-latest
-    needs: deploy-core
     strategy:
       matrix:
-        app: [app1, app2, app3, app4, app5, app6, app7, app8, app9, app10,
-              app11, app12, app13, app14, app15, app16, app17, app18, app19, app20,
-              app21, app22, app23, app24]
-      max-parallel: 6
+        app: [tec-api-gateway, tec-auth-service, tec-payment-service, tec-wallet-service]
+      max-parallel: 4
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
