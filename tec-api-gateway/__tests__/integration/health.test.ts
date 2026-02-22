@@ -7,7 +7,7 @@ const serviceStartTime = Date.now();
 const SERVICE_VERSION = '1.0.0';
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
+app.get('/health', async (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
   
   const healthResponse: any = {

@@ -6,7 +6,7 @@ const app = express();
 const serviceStartTime = Date.now();
 const SERVICE_VERSION = '1.0.0';
 
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
   res.json({
     status: 'ok',
