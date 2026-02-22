@@ -62,11 +62,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-// ✅ Vercel fix: only listen in local development
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => {
-    console.log(`💰 Wallet Service running on port ${PORT}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`💰 Wallet Service running on port ${PORT}`);
+});
 
 export default app;

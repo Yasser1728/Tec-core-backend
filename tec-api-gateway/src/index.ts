@@ -137,14 +137,11 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-// ✅ Vercel fix: only listen in local development
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, () => {
-    console.log(`🚀 API Gateway running on port ${PORT}`);
-    console.log(`📡 Auth Service: ${AUTH_SERVICE_URL}`);
-    console.log(`💰 Wallet Service: ${WALLET_SERVICE_URL}`);
-    console.log(`💳 Payment Service: ${PAYMENT_SERVICE_URL}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`🚀 API Gateway running on port ${PORT}`);
+  console.log(`📡 Auth Service: ${AUTH_SERVICE_URL}`);
+  console.log(`💰 Wallet Service: ${WALLET_SERVICE_URL}`);
+  console.log(`💳 Payment Service: ${PAYMENT_SERVICE_URL}`);
+});
 
 export default app;
