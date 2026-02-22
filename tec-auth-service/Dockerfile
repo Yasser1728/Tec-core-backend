@@ -5,20 +5,12 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy Prisma schema
-COPY ./prisma ./prisma
-
-# Copy package files
-COPY tec-auth-service/package*.json ./
-
-# Install dependencies
+# Copy package files and install all dependencies
+COPY package*.json ./
 RUN npm ci
 
 # Copy source code
-COPY tec-auth-service/ .
-
-# Generate Prisma Client
-RUN npx prisma generate
+COPY . .
 
 # Build TypeScript
 RUN npm run build
@@ -29,14 +21,10 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy package files
-COPY tec-auth-service/package*.json ./
+COPY package*.json ./
 
 # Install only production dependencies
 RUN npm ci --only=production && npm cache clean --force
-
-# Copy Prisma schema and generated client from builder (avoids npx version mismatch)
-COPY ./prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
@@ -45,7 +33,7 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 5001
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:5001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Run the application
