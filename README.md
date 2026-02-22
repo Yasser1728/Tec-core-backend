@@ -99,12 +99,24 @@ To run all services simultaneously, open four terminals (one per service).
 
 ## CI/CD
 
-A GitHub Actions workflow at `.github/workflows/ci.yml` runs on every push and pull request to `main`/`master`:
+Two GitHub Actions workflows run automatically on every push and pull request to `main`/`master`:
+
+### 1. CI Workflow (`.github/workflows/ci.yml`)
 
 1. **Lint & Test** — runs `npm run lint`, `npm run build`, and `npm test` for each service in parallel.
 2. **Docker Build** — builds each service's Docker image (no push) to verify the `Dockerfile` is correct.
 
-Railway automatically redeploys when commits are pushed to the connected branch.
+### 2. Railway Deployment (`.github/workflows/railway-deploy.yml`)
+
+Automatically deploys to Railway on every push to `main`/`master` using the official [`railwayapp/railway-github-deploy`](https://github.com/railwayapp/railway-github-deploy) action.
+
+**Required secret:**
+
+| Secret | Description |
+|--------|-------------|
+| `RAILWAY_TOKEN` | Railway API token. Generate one from your [Railway account settings](https://railway.app/account/tokens) and add it as a repository secret under **Settings → Secrets and variables → Actions**. |
+
+The **Railway Deployment** check will appear alongside the CI and other checks in every pull request and push.
 
 ## Engineering Notes
 
