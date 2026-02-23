@@ -296,12 +296,13 @@ export const deposit = async (req: Request, res: Response): Promise<void> => {
     }
 
     const { id } = req.params;
-    const { amount, assetType, userId, description } = req.body as {
+    const { amount, assetType, description } = req.body as {
       amount: number;
       assetType?: string;
-      userId?: string;
       description?: string;
     };
+    // Use the JWT-verified identity as the authoritative userId.
+    const userId = req.userId;
 
     logger.operation(operation, 'init', { walletId: id, amount, assetType, userId });
 
@@ -385,12 +386,13 @@ export const withdraw = async (req: Request, res: Response): Promise<void> => {
     }
 
     const { id } = req.params;
-    const { amount, assetType, userId, description } = req.body as {
+    const { amount, assetType, description } = req.body as {
       amount: number;
       assetType?: string;
-      userId?: string;
       description?: string;
     };
+    // Use the JWT-verified identity as the authoritative userId.
+    const userId = req.userId;
 
     logger.operation(operation, 'init', { walletId: id, amount, assetType, userId });
 
@@ -479,14 +481,15 @@ export const transfer = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { fromWalletId, toWalletId, amount, assetType, userId, description } = req.body as {
+    const { fromWalletId, toWalletId, amount, assetType, description } = req.body as {
       fromWalletId: string;
       toWalletId: string;
       amount: number;
       assetType?: string;
-      userId?: string;
       description?: string;
     };
+    // Use the JWT-verified identity as the authoritative userId.
+    const userId = req.userId;
 
     if (fromWalletId === toWalletId) {
       res.status(400).json({

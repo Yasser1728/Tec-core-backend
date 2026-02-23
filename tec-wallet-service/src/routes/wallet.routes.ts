@@ -10,6 +10,7 @@ import {
   transfer,
 } from '../controllers/wallet.controller';
 import { financialRateLimiter } from '../middlewares/rateLimit.middleware';
+import { authenticate } from '../middlewares/jwt.middleware';
 
 const router = Router();
 
@@ -32,16 +33,16 @@ router.post(
   linkWallet
 );
 
-// POST /wallets/transfer - Transfer funds between wallets (rate limited)
+// POST /wallets/transfer - Transfer funds between wallets (authenticated + rate limited)
 router.post(
   '/transfer',
+  authenticate,
   financialRateLimiter,
   [
     body('fromWalletId').isUUID(),
     body('toWalletId').isUUID(),
     body('amount').isFloat({ min: 0.000001 }),
     body('assetType').optional().isString().trim().notEmpty(),
-    body('userId').optional().isString(),
     body('description').optional().isString(),
   ],
   transfer
@@ -67,29 +68,29 @@ router.get(
   getWalletTransactions
 );
 
-// POST /wallets/:id/deposit - Deposit funds (rate limited)
+// POST /wallets/:id/deposit - Deposit funds (authenticated + rate limited)
 router.post(
   '/:id/deposit',
+  authenticate,
   financialRateLimiter,
   [
     param('id').isUUID(),
     body('amount').isFloat({ min: 0.000001 }),
     body('assetType').optional().isString().trim().notEmpty(),
-    body('userId').optional().isString(),
     body('description').optional().isString(),
   ],
   deposit
 );
 
-// POST /wallets/:id/withdraw - Withdraw funds (rate limited)
+// POST /wallets/:id/withdraw - Withdraw funds (authenticated + rate limited)
 router.post(
   '/:id/withdraw',
+  authenticate,
   financialRateLimiter,
   [
     param('id').isUUID(),
     body('amount').isFloat({ min: 0.000001 }),
     body('assetType').optional().isString().trim().notEmpty(),
-    body('userId').optional().isString(),
     body('description').optional().isString(),
   ],
   withdraw

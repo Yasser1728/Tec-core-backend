@@ -33,9 +33,10 @@ app.use(
   })
 );
 
-// ─── CORS: allow only origins listed in CORS_ORIGIN env ──────────────────────
+// ─── CORS: allow only origins listed in ALLOWED_ORIGINS (or CORS_ORIGIN) env ──
 const parseCorsOrigins = (): string[] | string => {
-  const raw = process.env.CORS_ORIGIN ?? '';
+  // ALLOWED_ORIGINS is the preferred env var; CORS_ORIGIN is kept for backwards compat.
+  const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
   if (!raw || raw === '*') return '*';
   return raw.split(',').map((o) => o.trim()).filter(Boolean);
 };
