@@ -13,6 +13,8 @@ datasource db {
 }
 
 // ─── Payment Models ────────────────────────────────────────────────────────────
+// NOTE: This is the scaffold model used to type the Prisma Client for Phase 2/3.
+// Full column definitions, indexes, and DB migrations will be formalised in Phase 4.
 
 model Payment {
   id             String    @id @default(uuid())
@@ -33,28 +35,4 @@ model Payment {
   @@index([user_id])
   @@index([status])
   @@map("payments")
-}
-
-// ─── Audit Log ────────────────────────────────────────────────────────────────
-
-/// Immutable audit trail entry written before every mutating payment operation.
-model AuditLog {
-  id         String   @id @default(uuid())
-  /// High-level action name, e.g. "create_payment", "approve_payment"
-  action     String
-  /// Entity type, e.g. "payment"
-  entity     String
-  /// Primary key of the affected entity
-  entity_id  String
-  user_id    String?
-  /// Snapshot of relevant state captured before the mutation
-  before     Json?
-  /// Snapshot of relevant state captured after the mutation
-  after      Json?
-  metadata   Json?
-  created_at DateTime @default(now())
-
-  @@index([entity, entity_id])
-  @@index([user_id])
-  @@map("audit_logs")
 }
