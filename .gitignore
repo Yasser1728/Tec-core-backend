@@ -32,6 +32,7 @@ coverage/
 # Prisma generated files (generated at runtime)
 **/node_modules/.prisma/
 tec-auth-service/prisma/client/
+tec-payment-service/prisma/client/
 tec-wallet-service/prisma/client/
 
 # Temporary files

@@ -1,0 +1,38 @@
+// Prisma schema for TEC Payment Service
+// Run `npx prisma generate` to generate the Prisma Client
+// Run `npx prisma migrate dev` to apply migrations
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Payment Models ────────────────────────────────────────────────────────────
+// NOTE: This is the scaffold model used to type the Prisma Client for Phase 2/3.
+// Full column definitions, indexes, and DB migrations will be formalised in Phase 4.
+
+model Payment {
+  id             String    @id @default(uuid())
+  user_id        String
+  amount         Float
+  currency       String    @default("PI")
+  payment_method String
+  status         String    @default("created")
+  pi_payment_id  String?   @unique
+  metadata       Json?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  approved_at    DateTime?
+  completed_at   DateTime?
+  failed_at      DateTime?
+  cancelled_at   DateTime?
+
+  @@index([user_id])
+  @@index([status])
+  @@map("payments")
+}
