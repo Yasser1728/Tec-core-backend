@@ -10,6 +10,7 @@ const mockPrismaClient = {
     update: jest.fn(),
   },
   $queryRaw: jest.fn(),
+  $transaction: jest.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn(mockPrismaClient)),
 };
 
 // Mock the database module
@@ -255,7 +256,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('should return 400 if payment is not in created status', async () => {
+    it('should return 409 if payment is not in created status', async () => {
       const mockPayment = {
         id: validApprovalData.payment_id,
         status: 'approved',
@@ -267,7 +268,7 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/approve')
         .send(validApprovalData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });
@@ -337,7 +338,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('should return 400 if payment is not in approved status', async () => {
+    it('should return 409 if payment is not in approved status', async () => {
       const mockPayment = {
         id: validCompletionData.payment_id,
         status: 'created',
@@ -349,7 +350,7 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/complete')
         .send(validCompletionData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });
@@ -474,7 +475,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('should return 400 if payment is already completed', async () => {
+    it('should return 409 if payment is already completed', async () => {
       const mockPayment = {
         id: validCancelData.payment_id,
         status: 'completed',
@@ -486,12 +487,12 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/cancel')
         .send(validCancelData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should return 400 if payment is already cancelled', async () => {
+    it('should return 409 if payment is already cancelled', async () => {
       const mockPayment = {
         id: validCancelData.payment_id,
         status: 'cancelled',
@@ -503,7 +504,7 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/cancel')
         .send(validCancelData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });
@@ -596,7 +597,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('should return 400 if payment is already failed', async () => {
+    it('should return 409 if payment is already failed', async () => {
       const mockPayment = {
         id: validFailData.payment_id,
         status: 'failed',
@@ -608,12 +609,12 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/fail')
         .send(validFailData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should return 400 if payment is already completed', async () => {
+    it('should return 409 if payment is already completed', async () => {
       const mockPayment = {
         id: validFailData.payment_id,
         status: 'completed',
@@ -625,7 +626,7 @@ describe('Payment Service Integration Tests', () => {
         .post('/payments/fail')
         .send(validFailData);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
     });

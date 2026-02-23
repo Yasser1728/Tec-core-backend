@@ -5,13 +5,16 @@ import { logError } from '../utils/logger';
 /** Shape of the JWT payload issued by the auth service. */
 interface TokenPayload {
   userId: string;
+  role?: string;
+  sessionId?: string;
   iat?: number;
   exp?: number;
 }
 
 /**
  * Verifies the Bearer JWT in the Authorization header.
- * On success, attaches `req.userId` and `req.user.id` for downstream handlers.
+ * Enforces HS256 algorithm only, applies a 30-second clock tolerance.
+ * On success, attaches `req.user` {id, role, sessionId} and `req.userId` for downstream handlers.
  * On failure, returns HTTP 401.
  */
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
@@ -37,9 +40,17 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    const decoded = jwt.verify(token, secret) as TokenPayload;
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      clockTolerance: 30,
+    }) as TokenPayload;
+
     req.userId = decoded.userId;
-    req.user = { id: decoded.userId };
+    req.user = {
+      id: decoded.userId,
+      role: decoded.role,
+      sessionId: decoded.sessionId,
+    };
     next();
   } catch (_error) {
     res.status(401).json({

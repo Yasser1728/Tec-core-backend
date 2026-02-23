@@ -1,6 +1,7 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { v4 as uuidv4 } from 'uuid';
 import paymentRoutes from './routes/payment.routes';
 import { errorMiddleware } from './middlewares/error.middleware';
 
@@ -13,17 +14,26 @@ const serviceStartTime = Date.now();
 app.use(helmet());
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const corsOrigin = process.env.CORS_ORIGIN || '*';
+const corsOrigin = process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '*';
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
+  exposedHeaders: ['X-Request-Id'],
 }));
 
 // ─── Body parsing ─────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ─── Request correlation (X-Request-Id) ──────────────────────────────────────
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = (req.headers['x-request-id'] as string | undefined) || uuidv4();
+  req.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
