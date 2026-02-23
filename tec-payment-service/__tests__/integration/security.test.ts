@@ -17,8 +17,9 @@ import {
 } from '../../src/middlewares/rate-limit.middleware';
 import { authenticate } from '../../src/middlewares/jwt.middleware';
 import {
-  idempotencyMiddleware,
-  _getIdempotencyStore,
+  idempotency,
+  InMemoryIdempotencyStore,
+  setIdempotencyStore,
 } from '../../src/middlewares/idempotency.middleware';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -206,26 +207,25 @@ describe('Idempotency middleware', () => {
   let app: Application;
 
   beforeEach(() => {
-    // Clear store between tests
-    const store = _getIdempotencyStore();
-    store.clear();
+    // Reset to a fresh in-memory store between tests.
+    setIdempotencyStore(new InMemoryIdempotencyStore());
 
     app = express();
     app.use(express.json());
 
     // Simulate authenticated user so storeKey uses userId
     app.use((req: Request, _res, next) => {
-      req.userId = 'test-user-idempotency';
+      (req as any).user = { id: 'test-user-idempotency' };
       next();
     });
 
-    app.post('/action', idempotencyMiddleware, (_req, res) => {
+    app.post('/action', idempotency as express.RequestHandler, (_req, res) => {
       res.status(201).json({ created: true, ts: Date.now() });
     });
   });
 
   afterEach(() => {
-    _getIdempotencyStore().clear();
+    setIdempotencyStore(new InMemoryIdempotencyStore());
   });
 
   it('returns 400 when Idempotency-Key header is absent', async () => {
@@ -234,10 +234,10 @@ describe('Idempotency middleware', () => {
     expect(res.body.error.code).toBe('MISSING_IDEMPOTENCY_KEY');
   });
 
-  it('returns 400 when Idempotency-Key is shorter than 10 characters', async () => {
+  it('returns 400 when Idempotency-Key exceeds 255 characters', async () => {
     const res = await request(app)
       .post('/action')
-      .set('Idempotency-Key', 'short')
+      .set('Idempotency-Key', 'a'.repeat(256))
       .send({});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_IDEMPOTENCY_KEY');

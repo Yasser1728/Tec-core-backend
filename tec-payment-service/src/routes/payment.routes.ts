@@ -15,15 +15,17 @@ import {
   statusRateLimiter,
   paymentRateLimiter,
 } from '../middlewares/rate-limit.middleware';
-import { idempotencyMiddleware } from '../middlewares/idempotency.middleware';
+import { idempotency } from '../middlewares/idempotency.middleware';
+import { authenticate } from '../middlewares/jwt.middleware';
 
 const router = Router();
 
 // POST /payments/create - Initiate a new payment
 router.post(
   '/create',
+  authenticate,
   initiateRateLimiter,
-  idempotencyMiddleware,
+  idempotency,
   [
     body('userId')
       .notEmpty().withMessage('userId is required')
@@ -50,6 +52,7 @@ router.post(
 // POST /payments/approve - Approve a payment (second stage)
 router.post(
   '/approve',
+  authenticate,
   paymentRateLimiter,
   [
     body('payment_id')
@@ -66,8 +69,9 @@ router.post(
 // POST /payments/complete - Confirm a payment (atomic, final stage)
 router.post(
   '/complete',
+  authenticate,
   confirmRateLimiter,
-  idempotencyMiddleware,
+  idempotency,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -83,8 +87,9 @@ router.post(
 // POST /payments/cancel - Cancel a payment (atomic)
 router.post(
   '/cancel',
+  authenticate,
   cancelRateLimiter,
-  idempotencyMiddleware,
+  idempotency,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -96,6 +101,7 @@ router.post(
 // POST /payments/fail - Record a payment failure
 router.post(
   '/fail',
+  authenticate,
   paymentRateLimiter,
   [
     body('payment_id')
@@ -112,6 +118,7 @@ router.post(
 // GET /payments/:id/status - Get payment status
 router.get(
   '/:id/status',
+  authenticate,
   statusRateLimiter,
   [
     param('id')
