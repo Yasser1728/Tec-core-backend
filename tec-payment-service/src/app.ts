@@ -11,7 +11,32 @@ const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 
 // ─── Security headers ─────────────────────────────────────────────────────────
-app.use(helmet());
+// Explicitly configure Helmet directives for defence-in-depth.
+// Note: Expect-CT was removed from Helmet 7+ and deprecated by all major browsers
+//       (Chrome 112+, April 2023). HSTS/certificate transparency via CAA DNS records
+//       is the recommended modern alternative.
+app.use(
+  helmet({
+    // Prevent information leakage via the Referer header
+    referrerPolicy: { policy: 'no-referrer' },
+    // Strict Transport Security: require HTTPS for 1 year
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+    },
+    // Minimal CSP for a JSON REST API — no HTML/scripts served
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    // Standard protections (on by default, made explicit here)
+    xContentTypeOptions: true,
+    xFrameOptions: { action: 'deny' },
+    xDnsPrefetchControl: { allow: false },
+  }),
+);
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const corsOrigin = process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '*';
