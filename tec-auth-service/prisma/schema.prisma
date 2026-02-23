@@ -1,0 +1,13 @@
+// Prisma schema for TEC Auth Service
+// Run `npx prisma generate` to generate the Prisma Client
+// Run `npx prisma migrate dev` to apply migrations
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
