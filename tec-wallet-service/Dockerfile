@@ -28,8 +28,9 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install only production dependencies (--ignore-scripts skips postinstall/prisma generate;
+# the generated client is already copied from the builder stage below)
+RUN npm ci --only=production --ignore-scripts && npm cache clean --force
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
