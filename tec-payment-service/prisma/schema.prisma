@@ -36,3 +36,29 @@ model Payment {
   @@index([status])
   @@map("payments")
 }
+
+// ─── Audit Log ─────────────────────────────────────────────────────────────────
+
+enum AuditEventType {
+  PAYMENT_INITIATED
+  PAYMENT_APPROVED
+  PAYMENT_CONFIRMED
+  PAYMENT_CANCELLED
+  PAYMENT_FAILED
+  INVALID_TRANSITION_ATTEMPT
+}
+
+model PaymentAuditLog {
+  id        String         @id @default(uuid())
+  userId    String
+  paymentId String?
+  eventType AuditEventType
+  metadata  Json?
+  ipAddress String?
+  requestId String?
+  timestamp DateTime       @default(now())
+
+  @@index([userId])
+  @@index([paymentId])
+  @@map("payment_audit_logs")
+}

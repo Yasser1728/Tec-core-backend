@@ -5,8 +5,12 @@ declare module 'express-serve-static-core' {
     /** Verified user identity attached by jwt.middleware */
     user?: {
       id: string;
+      role?: string;
+      sessionId?: string;
     };
     /** Convenience shorthand also set by jwt.middleware */
     userId?: string;
+    /** X-Request-Id correlation identifier */
+    requestId?: string;
   }
 }

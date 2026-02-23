@@ -187,3 +187,31 @@ export const createRateLimiter = (
 
 /** Default rate limiter for payment operations. */
 export const paymentRateLimiter = createRateLimiter();
+
+// ─── Per-route rate limiters ──────────────────────────────────────────────────
+
+const getWindowMs = (): number => parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10);
+
+/** Rate limiter for payment initiation (default: 5 requests / window). */
+export const initiateRateLimiter = createRateLimiter(
+  parseInt(process.env.RATE_LIMIT_INITIATE ?? '5', 10),
+  getWindowMs(),
+);
+
+/** Rate limiter for payment confirmation (default: 5 requests / window). */
+export const confirmRateLimiter = createRateLimiter(
+  parseInt(process.env.RATE_LIMIT_CONFIRM ?? '5', 10),
+  getWindowMs(),
+);
+
+/** Rate limiter for payment cancellation (default: 3 requests / window). */
+export const cancelRateLimiter = createRateLimiter(
+  parseInt(process.env.RATE_LIMIT_CANCEL ?? '3', 10),
+  getWindowMs(),
+);
+
+/** Rate limiter for payment status queries (default: 30 requests / window). */
+export const statusRateLimiter = createRateLimiter(
+  parseInt(process.env.RATE_LIMIT_STATUS ?? '30', 10),
+  getWindowMs(),
+);

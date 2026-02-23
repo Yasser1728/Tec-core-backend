@@ -8,12 +8,22 @@ import {
   failPayment,
   getPaymentStatus,
 } from '../controllers/payment.controller';
+import {
+  initiateRateLimiter,
+  confirmRateLimiter,
+  cancelRateLimiter,
+  statusRateLimiter,
+  paymentRateLimiter,
+} from '../middlewares/rate-limit.middleware';
+import { idempotencyMiddleware } from '../middlewares/idempotency.middleware';
 
 const router = Router();
 
-// POST /payments/create - Create a new payment
+// POST /payments/create - Initiate a new payment
 router.post(
   '/create',
+  initiateRateLimiter,
+  idempotencyMiddleware,
   [
     body('userId')
       .notEmpty().withMessage('userId is required')
@@ -40,6 +50,7 @@ router.post(
 // POST /payments/approve - Approve a payment (second stage)
 router.post(
   '/approve',
+  paymentRateLimiter,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -52,9 +63,11 @@ router.post(
   approvePayment
 );
 
-// POST /payments/complete - Complete a payment (final stage)
+// POST /payments/complete - Confirm a payment (atomic, final stage)
 router.post(
   '/complete',
+  confirmRateLimiter,
+  idempotencyMiddleware,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -67,9 +80,11 @@ router.post(
   completePayment
 );
 
-// POST /payments/cancel - Cancel a payment
+// POST /payments/cancel - Cancel a payment (atomic)
 router.post(
   '/cancel',
+  cancelRateLimiter,
+  idempotencyMiddleware,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -81,6 +96,7 @@ router.post(
 // POST /payments/fail - Record a payment failure
 router.post(
   '/fail',
+  paymentRateLimiter,
   [
     body('payment_id')
       .notEmpty().withMessage('payment_id is required')
@@ -96,6 +112,7 @@ router.post(
 // GET /payments/:id/status - Get payment status
 router.get(
   '/:id/status',
+  statusRateLimiter,
   [
     param('id')
       .notEmpty().withMessage('id is required')
