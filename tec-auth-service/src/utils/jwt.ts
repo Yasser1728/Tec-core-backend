@@ -3,7 +3,8 @@ import type { StringValue } from 'ms';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
-const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '1h') as StringValue;
+// TOKEN_EXPIRY takes priority; JWT_EXPIRES_IN retained for backwards compatibility
+const JWT_EXPIRES_IN = (process.env.TOKEN_EXPIRY || process.env.JWT_EXPIRES_IN || '1h') as StringValue;
 const JWT_REFRESH_EXPIRES_IN = (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as StringValue;
 
 interface TokenPayload {

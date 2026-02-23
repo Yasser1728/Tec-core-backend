@@ -3,6 +3,7 @@ import { validationResult } from 'express-validator';
 import { hashPassword, comparePassword } from '../utils/hash';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { prisma } from '../config/database';
+import { logAudit } from '../utils/logger';
 
 // Register a new user
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -67,8 +68,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user.id);
 
-    // Create session
-    await prisma.session.create({
+    // Store issued refresh token (one per device; multiple tokens allowed per user)
+    await prisma.refreshToken.create({
       data: {
         user_id: user.id,
         token: refreshToken,
@@ -77,6 +78,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         ip_address: req.ip,
       },
     });
+
+    // Audit: log registration event
+    logAudit('REGISTER', { userId: user.id, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
 
     res.status(201).json({
       success: true,
@@ -149,8 +153,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user.id);
 
-    // Create session
-    await prisma.session.create({
+    // Store issued refresh token (one per device; multiple tokens allowed per user)
+    await prisma.refreshToken.create({
       data: {
         user_id: user.id,
         token: refreshToken,
@@ -159,6 +163,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         ip_address: req.ip,
       },
     });
+
+    // Audit: log login event
+    logAudit('LOGIN', { userId: user.id, ipAddress: req.ip, userAgent: req.headers['user-agent'] });
 
     // Return user without password
     const { password_hash: _password_hash, ...userWithoutPassword } = user;
@@ -188,8 +195,8 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req as any).userId;
 
-    // Delete all sessions for user
-    await prisma.session.deleteMany({
+    // Revoke all refresh tokens for this user (logout all devices)
+    await prisma.refreshToken.deleteMany({
       where: { user_id: userId },
     });
 
@@ -243,12 +250,12 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if session exists
-    const session = await prisma.session.findUnique({
+    // Validate the refresh token against stored tokens
+    const storedToken = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
     });
 
-    if (!session || session.expires_at < new Date()) {
+    if (!storedToken || storedToken.expires_at < new Date()) {
       res.status(401).json({
         success: false,
         error: {
@@ -259,11 +266,11 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate new tokens
+    // Generate new tokens (token rotation for security)
     const tokens = generateTokens(decoded.userId);
 
-    // Update session
-    await prisma.session.update({
+    // Rotate refresh token in-place
+    await prisma.refreshToken.update({
       where: { token: refreshToken },
       data: {
         token: tokens.refreshToken,
