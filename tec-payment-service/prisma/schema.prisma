@@ -13,3 +13,48 @@ datasource db {
 }
 
 // ─── Payment Models ────────────────────────────────────────────────────────────
+
+model Payment {
+  id             String    @id @default(uuid())
+  user_id        String
+  amount         Float
+  currency       String    @default("PI")
+  payment_method String
+  status         String    @default("created")
+  pi_payment_id  String?   @unique
+  metadata       Json?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  approved_at    DateTime?
+  completed_at   DateTime?
+  failed_at      DateTime?
+  cancelled_at   DateTime?
+
+  @@index([user_id])
+  @@index([status])
+  @@map("payments")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+/// Immutable audit trail entry written before every mutating payment operation.
+model AuditLog {
+  id         String   @id @default(uuid())
+  /// High-level action name, e.g. "create_payment", "approve_payment"
+  action     String
+  /// Entity type, e.g. "payment"
+  entity     String
+  /// Primary key of the affected entity
+  entity_id  String
+  user_id    String?
+  /// Snapshot of relevant state captured before the mutation
+  before     Json?
+  /// Snapshot of relevant state captured after the mutation
+  after      Json?
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  @@index([entity, entity_id])
+  @@index([user_id])
+  @@map("audit_logs")
+}
