@@ -7,6 +7,7 @@ import subscriptionRoutes from './routes/subscription.routes';
 import kycRoutes from './routes/kyc.routes';
 import securityRoutes from './routes/security.routes';
 import profileRoutes from './routes/profile.routes';
+import { rateLimitMiddleware } from './middlewares/rate-limit.middleware';
 
 dotenv.config();
 
@@ -17,10 +18,22 @@ const serviceStartTime = Date.now();
 
 // Security middleware
 app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN || '*';
+
+// CORS — ALLOWED_ORIGINS (comma-separated) takes priority; falls back to CORS_ORIGIN (single value)
+const allowedOrigins = process.env.ALLOWED_ORIGINS;
+const corsOrigin: string | string[] = allowedOrigins
+  ? allowedOrigins.split(',').map((o) => o.trim())
+  : (process.env.CORS_ORIGIN || '*');
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
+  // Explicitly list allowed methods so CORS preflight (OPTIONS) is handled correctly
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  // Explicitly list headers that clients may send (including Authorization for JWT)
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  // preflightContinue: false (default) — cors() responds to OPTIONS itself
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 }));
 
 // Body parsing
@@ -39,13 +52,13 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Routes
-app.use('/auth', authRoutes);
+// Routes — rate limiter applied to /auth endpoints
+app.use('/auth', rateLimitMiddleware, authRoutes);
 app.use('/subscriptions', subscriptionRoutes);
 app.use('/kyc', kycRoutes);
 app.use('/security', securityRoutes);
 app.use('/profile', profileRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', rateLimitMiddleware, authRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/kyc', kycRoutes);
 app.use('/api/security', securityRoutes);

@@ -11,3 +11,119 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ─── Core Auth Models ────────────────────────────────────────────────────────
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  username      String          @unique
+  password_hash String
+  kyc_status    String          @default("pending")
+  role          String          @default("user")
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+  refreshTokens RefreshToken[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  loginAttempts LoginAttempt[]
+  twoFactorAuth TwoFactorAuth?
+  devices       Device[]
+  kycData       KycData?
+
+  @@map("users")
+}
+
+// Issued refresh tokens — one per device session; multiple allowed per user
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String   @unique
+  device     String?
+  ip_address String?
+  expires_at DateTime
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// Server-side sessions for listing / revoking active sessions
+model Session {
+  id         String   @id @default(uuid())
+  user_id    String
+  expires_at DateTime
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Audit trail for security-sensitive events (login, register, logout, etc.)
+model AuditLog {
+  id         String   @id @default(uuid())
+  user_id    String?
+  action     String
+  ip_address String?
+  user_agent String?
+  metadata   Json?
+  created_at DateTime @default(now())
+  user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+// Track failed login attempts per email/IP for account-lockout logic
+model LoginAttempt {
+  id         String   @id @default(uuid())
+  user_id    String?
+  email      String
+  ip_address String?
+  success    Boolean  @default(false)
+  created_at DateTime @default(now())
+  user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@map("login_attempts")
+}
+
+// ─── Security Models ─────────────────────────────────────────────────────────
+
+model TwoFactorAuth {
+  id           String    @id @default(uuid())
+  user_id      String    @unique
+  secret       String?
+  enabled      Boolean   @default(false)
+  enabled_at   DateTime?
+  backup_codes String[]
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("two_factor_auth")
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  user_id    String
+  last_login DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+// ─── KYC Models ──────────────────────────────────────────────────────────────
+
+model KycData {
+  id             String    @id @default(uuid())
+  user_id        String    @unique
+  full_name      String
+  date_of_birth  DateTime
+  country        String
+  document_type  String
+  document_id    String
+  status         String    @default("PENDING")
+  submitted_at   DateTime  @default(now())
+  verified_at    DateTime?
+  rejection_note String?
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("kyc_data")
+}
