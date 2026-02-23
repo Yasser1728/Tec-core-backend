@@ -1,0 +1,45 @@
+// Prisma schema for TEC Wallet Service
+// Run `npx prisma generate` to generate the Prisma Client
+// Run `npx prisma migrate dev` to apply migrations
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Wallet Models ────────────────────────────────────────────────────────────
+
+model Wallet {
+  id             String        @id @default(uuid())
+  user_id        String
+  wallet_type    String
+  wallet_address String?       @unique
+  currency       String
+  balance        Float         @default(0)
+  is_primary     Boolean       @default(false)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  transactions   Transaction[]
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id         String   @id @default(uuid())
+  wallet_id  String
+  type       String
+  amount     Float
+  status     String   @default("pending")
+  metadata   Json?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  wallet     Wallet   @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+
+  @@index([wallet_id])
+  @@map("transactions")
+}
