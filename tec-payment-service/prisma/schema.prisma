@@ -1,0 +1,78 @@
+// Prisma schema for TEC Payment Service – Phase 3 enterprise-hardened implementation.
+// Run `npx prisma generate` to regenerate the Prisma Client after schema changes.
+// Run `npx prisma migrate dev` to apply migrations to the database.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/// Lifecycle states for a payment.
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+/// Audit event types written to the immutable AuditLog.
+enum AuditEventType {
+  PAYMENT_INITIATED
+  PAYMENT_CONFIRMED
+  PAYMENT_CANCELLED
+  PAYMENT_FAILED
+  INVALID_TRANSITION
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+/// A single payment record.  `idempotencyKey` combined with `userId` must be
+/// unique so that repeated requests with the same key are safe to retry.
+model Payment {
+  id             String        @id @default(uuid())
+  /// Authenticated user who initiated the payment.
+  userId         String
+  /// Payment amount stored as an exact Decimal (never a JS float).
+  amount         Decimal       @db.Decimal(18, 8)
+  /// ISO 4217 currency code; stored and validated as UPPERCASE (e.g. "USD").
+  currency       String
+  /// Current lifecycle status.
+  status         PaymentStatus @default(PENDING)
+  /// Client-supplied idempotency key (userId + idempotencyKey must be unique).
+  idempotencyKey String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  auditLogs AuditLog[]
+
+  /// Prevent duplicate submissions for the same (user, key) pair.
+  @@unique([userId, idempotencyKey])
+  @@index([userId])
+  @@map("payments")
+}
+
+/// Immutable audit trail entry written for every state-changing event.
+model AuditLog {
+  id        String         @id @default(uuid())
+  userId    String
+  paymentId String
+  eventType AuditEventType
+  /// Arbitrary structured context (previous status, requested status, etc.).
+  metadata  Json?
+  /// Client IP address, forwarded by the reverse proxy.
+  ipAddress String?
+  createdAt DateTime       @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([userId])
+  @@map("audit_logs")
+}

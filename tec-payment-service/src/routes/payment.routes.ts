@@ -1,107 +1,112 @@
+/**
+ * Payment routes – Phase 3 enterprise-hardened.
+ *
+ * Middleware stack per route:
+ *  authenticate   → verify JWT (HS256 only, clockTolerance, req.user)
+ *  idempotency    → require Idempotency-Key header, replay cached responses
+ *  rateLimit      → per-route limit (initiate 5/min, confirm 5/min,
+ *                   cancel 3/min, status 30/min) keyed by userId or IP
+ *  handler        → Zod-validated controller
+ */
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import rateLimit from 'express-rate-limit';
+import { Request } from 'express';
+import { authenticate } from '../middlewares/jwt.middleware';
+import { idempotency } from '../middlewares/idempotency.middleware';
 import {
-  createPayment,
-  approvePayment,
-  completePayment,
+  initiatePayment,
+  confirmPayment,
   cancelPayment,
-  failPayment,
   getPaymentStatus,
 } from '../controllers/payment.controller';
 
 const router = Router();
 
-// POST /payments/create - Create a new payment
+// ─── Rate-limit key generator (userId if authenticated, else IP) ──────────────
+
+const makeKeyGenerator =
+  (route: string) =>
+  (req: Request): string => {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = forwarded
+      ? (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',').pop()?.trim() ?? 'unknown'
+      : req.socket.remoteAddress ?? 'unknown';
+    const userId = req.user?.id ?? ip;
+    return `rl:${route}:${userId}`;
+  };
+
+const env = (key: string, fallback: number): number =>
+  parseInt(process.env[key] ?? String(fallback), 10);
+
+const rateLimitResponse = {
+  success: false,
+  error: {
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many requests. Please retry after the window resets.',
+  },
+};
+
+// POST /payments/initiate – create a new PENDING payment (5 req/min/user)
 router.post(
-  '/create',
-  [
-    body('userId')
-      .notEmpty().withMessage('userId is required')
-      .isUUID().withMessage('userId must be a valid UUID'),
-    body('amount')
-      .notEmpty().withMessage('amount is required')
-      .isFloat({ min: 0.01 }).withMessage('amount must be greater than 0'),
-    body('currency')
-      .optional()
-      .isString().withMessage('currency must be a string')
-      .isLength({ min: 2, max: 3 }).withMessage('currency must be 2-3 characters')
-      .toUpperCase(),
-    body('payment_method')
-      .notEmpty().withMessage('payment_method is required')
-      .toLowerCase()
-      .isIn(['pi', 'card', 'wallet']).withMessage('payment_method must be one of: pi, card, wallet'),
-    body('metadata')
-      .optional()
-      .isObject().withMessage('metadata must be a valid JSON object'),
-  ],
-  createPayment
+  '/initiate',
+  authenticate,
+  idempotency,
+  rateLimit({
+    windowMs:        env('RATE_LIMIT_INITIATE_WINDOW_MS', 60_000),
+    max:             env('RATE_LIMIT_INITIATE_MAX', 5),
+    keyGenerator:    makeKeyGenerator('initiate'),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message:         rateLimitResponse,
+  }),
+  initiatePayment,
 );
 
-// POST /payments/approve - Approve a payment (second stage)
+// POST /payments/confirm – transition PENDING → CONFIRMED (5 req/min/user)
 router.post(
-  '/approve',
-  [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('pi_payment_id')
-      .optional()
-      .isString().withMessage('pi_payment_id must be a string')
-      .trim(),
-  ],
-  approvePayment
+  '/confirm',
+  authenticate,
+  idempotency,
+  rateLimit({
+    windowMs:        env('RATE_LIMIT_CONFIRM_WINDOW_MS', 60_000),
+    max:             env('RATE_LIMIT_CONFIRM_MAX', 5),
+    keyGenerator:    makeKeyGenerator('confirm'),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message:         rateLimitResponse,
+  }),
+  confirmPayment,
 );
 
-// POST /payments/complete - Complete a payment (final stage)
-router.post(
-  '/complete',
-  [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('transaction_id')
-      .optional()
-      .isString().withMessage('transaction_id must be a string')
-      .trim(),
-  ],
-  completePayment
-);
-
-// POST /payments/cancel - Cancel a payment
+// POST /payments/cancel – transition PENDING/CONFIRMED → CANCELLED (3 req/min/user)
 router.post(
   '/cancel',
-  [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-  ],
-  cancelPayment
+  authenticate,
+  idempotency,
+  rateLimit({
+    windowMs:        env('RATE_LIMIT_CANCEL_WINDOW_MS', 60_000),
+    max:             env('RATE_LIMIT_CANCEL_MAX', 3),
+    keyGenerator:    makeKeyGenerator('cancel'),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message:         rateLimitResponse,
+  }),
+  cancelPayment,
 );
 
-// POST /payments/fail - Record a payment failure
-router.post(
-  '/fail',
-  [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('reason')
-      .optional()
-      .isString().withMessage('reason must be a string')
-      .trim(),
-  ],
-  failPayment
-);
-
-// GET /payments/:id/status - Get payment status
+// GET /payments/:id/status – retrieve current payment status (30 req/min/user)
 router.get(
   '/:id/status',
-  [
-    param('id')
-      .notEmpty().withMessage('id is required')
-      .isUUID().withMessage('id must be a valid UUID')
-  ],
-  getPaymentStatus
+  authenticate,
+  rateLimit({
+    windowMs:        env('RATE_LIMIT_STATUS_WINDOW_MS', 60_000),
+    max:             env('RATE_LIMIT_STATUS_MAX', 30),
+    keyGenerator:    makeKeyGenerator('status'),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message:         rateLimitResponse,
+  }),
+  getPaymentStatus,
 );
 
 export default router;

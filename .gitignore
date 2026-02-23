@@ -33,6 +33,7 @@ coverage/
 **/node_modules/.prisma/
 tec-auth-service/prisma/client/
 tec-wallet-service/prisma/client/
+tec-payment-service/prisma/client/
 
 # Temporary files
 *.tmp
