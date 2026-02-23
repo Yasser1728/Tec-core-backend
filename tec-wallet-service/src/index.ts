@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import walletRoutes from './routes/wallet.routes';
+import { logger } from './utils/logger';
 
 dotenv.config();
 
@@ -11,13 +12,45 @@ const PORT = process.env.PORT || 5002;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 
-// Security middleware
-app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN || '*';
-app.use(cors({
-  origin: corsOrigin,
-  credentials: true,
-}));
+// ─── Security headers ────────────────────────────────────────────────────────
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+      },
+    },
+    frameguard: { action: 'deny' },          // X-Frame-Options: DENY
+    noSniff: true,                            // X-Content-Type-Options: nosniff
+    xssFilter: true,
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+  })
+);
+
+// ─── CORS: allow only origins listed in ALLOWED_ORIGINS (or CORS_ORIGIN) env ──
+const parseCorsOrigins = (): string[] | string => {
+  // ALLOWED_ORIGINS is the preferred env var; CORS_ORIGIN is kept for backwards compat.
+  const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
+  if (!raw || raw === '*') return '*';
+  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+};
+
+const allowedOrigins = parseCorsOrigins();
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 
 // Body parsing
 app.use(express.json());
@@ -52,7 +85,7 @@ app.use('*', (_req, res) => {
 
 // Error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Wallet Service Error:', err);
+  logger.error('Wallet Service Error', { message: err.message, stack: err.stack });
   res.status(500).json({
     success: false,
     error: {
@@ -63,7 +96,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 app.listen(PORT, () => {
-  console.log(`💰 Wallet Service running on port ${PORT}`);
+  logger.info(`💰 Wallet Service running on port ${PORT}`);
 });
 
 export default app;
