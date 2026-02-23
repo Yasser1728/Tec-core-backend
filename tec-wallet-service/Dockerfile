@@ -6,8 +6,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files and install all dependencies
+# --ignore-scripts skips postinstall (prisma generate); the explicit RUN below handles it
+# after the source is copied and prisma/schema.prisma is available.
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
