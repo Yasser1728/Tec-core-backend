@@ -1,3 +1,4 @@
+import { PrismaClient } from '../../prisma/client';
 import { prisma } from '../config/database';
 import { logWarn } from './logger';
 
@@ -24,14 +25,12 @@ export interface AuditLogData {
  */
 export const createAuditLog = async (data: AuditLogData): Promise<void> => {
   try {
-    await (prisma as unknown as {
-      paymentAuditLog: { create: (args: { data: unknown }) => Promise<unknown> };
-    }).paymentAuditLog.create({
+    await (prisma as PrismaClient).paymentAuditLog.create({
       data: {
         userId: data.userId,
         paymentId: data.paymentId,
         eventType: data.eventType,
-        metadata: data.metadata ?? {},
+        metadata: (data.metadata ?? {}) as object,
         ipAddress: data.ipAddress,
         requestId: data.requestId,
         timestamp: new Date(),

@@ -12,6 +12,17 @@ const idempotencyStore = new Map<string, CachedResponse>();
 const getIdempotencyTtl = (): number =>
   parseInt(process.env.IDEMPOTENCY_TTL_MS ?? '600000', 10); // default 10 minutes
 
+// Periodically remove expired entries to prevent unbounded memory growth
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of idempotencyStore) {
+    if (now >= entry.expiresAt) {
+      idempotencyStore.delete(key);
+    }
+  }
+}, CLEANUP_INTERVAL_MS).unref();
+
 /**
  * Idempotency middleware — enforces Idempotency-Key header on mutating requests.
  *
