@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import paymentRoutes from './routes/payment.routes';
 import { requestId } from './middlewares/requestId.middleware';
 import { errorMiddleware } from './middlewares/error.middleware';
+import { initIdempotencyStore } from './middlewares/idempotency.middleware';
 import { logger } from './utils/logger';
 
 dotenv.config();
@@ -15,8 +16,40 @@ const PORT = process.env.PORT || 5003;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 
-// ─── Security headers ─────────────────────────────────────────────────────────
-app.use(helmet());
+// ─── Security headers (Helmet advanced policies) ─────────────────────────────
+app.use(
+  helmet({
+    // Content-Security-Policy: lock down resource origins to self only.
+    // APIs don't serve HTML, but defence-in-depth still applies.
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'"],
+        styleSrc:    ["'self'"],
+        imgSrc:      ["'self'"],
+        connectSrc:  ["'self'"],
+        frameSrc:    ["'none'"],
+        objectSrc:   ["'none'"],
+        baseUri:     ["'self'"],
+        formAction:  ["'self'"],
+      },
+    },
+    // HTTP Strict-Transport-Security: force HTTPS for 1 year.
+    hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
+    // X-Frame-Options: DENY – prevents clickjacking.
+    frameguard:  { action: 'deny' },
+    // X-Content-Type-Options: nosniff – prevents MIME-type sniffing.
+    noSniff:     true,
+    // X-DNS-Prefetch-Control: off – prevents DNS prefetch leakage.
+    dnsPrefetchControl: { allow: false },
+    // Referrer-Policy: no-referrer – don't leak referrer URLs.
+    referrerPolicy: { policy: 'no-referrer' },
+    // X-Permitted-Cross-Domain-Policies: none.
+    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    // Disable X-Powered-By header.
+    hidePoweredBy: true,
+  })
+);
 
 // ─── CORS: allow only origins listed in ALLOWED_ORIGINS (or CORS_ORIGIN) ─────
 const parseCorsOrigins = (): string[] | string => {
@@ -45,6 +78,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── Request correlation – assign/propagate x-request-id ─────────────────────
 app.use(requestId);
+
+// ─── Idempotency store – initialise best available backend ────────────────────
+// Uses Redis when REDIS_URL is set; falls back to in-memory otherwise.
+initIdempotencyStore();
 
 // ─── Global IP-based rate limiter (pre-authentication, applied to all routes) ─
 // Prevents brute-force and DDoS at the entry point.  Per-user limits are

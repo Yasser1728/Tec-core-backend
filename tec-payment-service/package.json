@@ -54,5 +54,8 @@
     "testMatch": [
       "**/__tests__/**/*.test.ts"
     ]
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.9.3"
   }
 }
