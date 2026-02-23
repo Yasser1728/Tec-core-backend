@@ -15,22 +15,21 @@ datasource db {
 // ─── Core Auth Models ────────────────────────────────────────────────────────
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  username      String         @unique
+  id            String          @id @default(uuid())
+  email         String          @unique
+  username      String          @unique
   password_hash String
-  kyc_status    String         @default("pending")
-  role          String         @default("user")
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
+  kyc_status    String          @default("pending")
+  role          String          @default("user")
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
   refreshTokens RefreshToken[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  loginAttempts LoginAttempt[]
   twoFactorAuth TwoFactorAuth?
   devices       Device[]
   kycData       KycData?
-  subscriptions Subscription[]
-  payments      Payment[]
 
   @@map("users")
 }
@@ -60,7 +59,7 @@ model Session {
   @@map("sessions")
 }
 
-// Audit trail for security-sensitive events (login, register, etc.)
+// Audit trail for security-sensitive events (login, register, logout, etc.)
 model AuditLog {
   id         String   @id @default(uuid())
   user_id    String?
@@ -72,6 +71,19 @@ model AuditLog {
   user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+// Track failed login attempts per email/IP for account-lockout logic
+model LoginAttempt {
+  id         String   @id @default(uuid())
+  user_id    String?
+  email      String
+  ip_address String?
+  success    Boolean  @default(false)
+  created_at DateTime @default(now())
+  user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@map("login_attempts")
 }
 
 // ─── Security Models ─────────────────────────────────────────────────────────
@@ -114,46 +126,4 @@ model KycData {
   user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("kyc_data")
-}
-
-// ─── Subscription Models ─────────────────────────────────────────────────────
-
-model Plan {
-  id            String         @id @default(uuid())
-  name          String         @unique
-  description   String
-  price         Float
-  currency      String
-  features      String[]
-  duration      Int
-  subscriptions Subscription[]
-
-  @@map("plans")
-}
-
-model Subscription {
-  id         String   @id @default(uuid())
-  user_id    String
-  plan_id    String
-  status     String   @default("active")
-  end_date   DateTime
-  auto_renew Boolean  @default(true)
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  plan       Plan     @relation(fields: [plan_id], references: [id])
-
-  @@map("subscriptions")
-}
-
-model Payment {
-  id         String   @id @default(uuid())
-  user_id    String
-  amount     Float    @default(0)
-  currency   String   @default("PI")
-  status     String   @default("pending")
-  metadata   Json?
-  created_at DateTime @default(now())
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@map("payments")
 }

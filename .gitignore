@@ -31,6 +31,7 @@ coverage/
 
 # Prisma generated files (generated at runtime)
 **/node_modules/.prisma/
+tec-auth-service/prisma/client/
 
 # Temporary files
 *.tmp

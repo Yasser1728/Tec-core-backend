@@ -27,6 +27,13 @@ const corsOrigin: string | string[] = allowedOrigins
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
+  // Explicitly list allowed methods so CORS preflight (OPTIONS) is handled correctly
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  // Explicitly list headers that clients may send (including Authorization for JWT)
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  // preflightContinue: false (default) — cors() responds to OPTIONS itself
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 }));
 
 // Body parsing
