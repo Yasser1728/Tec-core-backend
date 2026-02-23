@@ -12,6 +12,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Generate Prisma client (custom output: ./prisma/client)
+RUN npx prisma generate
+
 # Build TypeScript
 RUN npm run build
 
@@ -30,6 +33,8 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
+# Copy the generated Prisma client (required at runtime)
+COPY --from=builder /app/prisma/client ./prisma/client
 
 ARG PORT=5002
 ENV PORT=${PORT}

@@ -30,16 +30,61 @@ model Wallet {
 }
 
 model Transaction {
-  id         String   @id @default(uuid())
-  wallet_id  String
-  type       String
-  amount     Float
-  status     String   @default("pending")
-  metadata   Json?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  wallet     Wallet   @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  wallet_id   String
+  type        String
+  amount      Float
+  /// ISO 4217 currency code or asset symbol (e.g. "USD", "PI", "BTC")
+  asset_type  String   @default("USD")
+  status      String   @default("pending")
+  description String?
+  metadata    Json?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  wallet      Wallet   @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
 
   @@index([wallet_id])
+  @@index([status])
   @@map("transactions")
+}
+
+// ─── Multi-currency Account ────────────────────────────────────────────────────
+
+/// Account tracks a per-currency balance for a user (separate from legacy Wallet).
+model Account {
+  id            String   @id @default(uuid())
+  user_id       String
+  /// ISO 4217 currency code or asset symbol (e.g. "USD", "PI", "BTC")
+  currency_code String
+  balance       Float    @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([user_id, currency_code])
+  @@index([user_id])
+  @@map("accounts")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+/// Immutable audit trail entry written before every mutating operation.
+model AuditLog {
+  id         String   @id @default(uuid())
+  /// High-level action name, e.g. "deposit", "withdraw", "transfer"
+  action     String
+  /// Entity type, e.g. "wallet", "account", "transaction"
+  entity     String
+  /// Primary key of the affected entity
+  entity_id  String
+  user_id    String?
+  /// Snapshot of relevant state captured before the mutation
+  before     Json?
+  /// Snapshot of relevant state captured after the mutation
+  after      Json?
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  @@index([entity, entity_id])
+  @@index([user_id])
+  @@map("audit_logs")
 }

@@ -1,6 +1,46 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
+import { Prisma } from '../../prisma/client';
 import { prisma } from '../config/database';
+import { logger } from '../utils/logger';
+
+// ─── Helper: parse supported currencies ────────────────────────────────────────
+
+const getSupportedCurrencies = (): string[] => {
+  const raw = process.env.SUPPORTED_CURRENCIES ?? 'USD,PI,BTC,ETH';
+  return raw.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+};
+
+// ─── Helper: write an AuditLog entry ──────────────────────────────────────────
+
+/**
+ * Write an immutable audit log entry within the current transaction (or
+ * standalone if no tx client is passed).
+ */
+const writeAuditLog = async (
+  tx: Prisma.TransactionClient,
+  params: {
+    action: string;
+    entity: string;
+    entityId: string;
+    userId?: string;
+    before?: Prisma.InputJsonValue | null;
+    after?: Prisma.InputJsonValue | null;
+    metadata?: Prisma.InputJsonValue | null;
+  },
+): Promise<void> => {
+  await tx.auditLog.create({
+    data: {
+      action: params.action,
+      entity: params.entity,
+      entity_id: params.entityId,
+      user_id: params.userId ?? null,
+      before: params.before ?? Prisma.JsonNull,
+      after: params.after ?? Prisma.JsonNull,
+      metadata: params.metadata ?? Prisma.JsonNull,
+    },
+  });
+};
 
 // Get all wallets for a user
 export const getWallets = async (req: Request, res: Response): Promise<void> => {
@@ -232,6 +272,332 @@ export const getWalletTransactions = async (req: Request, res: Response): Promis
         code: 'INTERNAL_ERROR',
         message: 'Failed to get wallet transactions',
       },
+    });
+  }
+};
+
+// ─── Deposit ──────────────────────────────────────────────────────────────────
+
+/**
+ * POST /wallets/:id/deposit
+ * Add funds to a wallet atomically.
+ * Writes an AuditLog entry before updating the balance.
+ */
+export const deposit = async (req: Request, res: Response): Promise<void> => {
+  const operation = 'deposit';
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: errors.array() },
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const { amount, assetType, userId, description } = req.body as {
+      amount: number;
+      assetType?: string;
+      userId?: string;
+      description?: string;
+    };
+
+    logger.operation(operation, 'init', { walletId: id, amount, assetType, userId });
+
+    const supported = getSupportedCurrencies();
+    const resolvedAsset = (assetType ?? 'USD').toUpperCase();
+    if (supported.length > 0 && !supported.includes(resolvedAsset)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'UNSUPPORTED_CURRENCY', message: `Currency ${resolvedAsset} is not supported` },
+      });
+      return;
+    }
+
+    logger.operation(operation, 'verify', { walletId: id, assetType: resolvedAsset });
+
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const wallet = await tx.wallet.findUnique({ where: { id } });
+      if (!wallet) throw Object.assign(new Error('Wallet not found'), { statusCode: 404, code: 'NOT_FOUND' });
+
+      // Write audit log before mutation (after state is deterministic at this point)
+      await writeAuditLog(tx, {
+        action: operation,
+        entity: 'wallet',
+        entityId: id,
+        userId,
+        before: { balance: wallet.balance },
+        after: { balance: wallet.balance + amount },
+        metadata: { amount, assetType: resolvedAsset, description },
+      });
+
+      const updated = await tx.wallet.update({
+        where: { id },
+        data: { balance: { increment: amount } },
+      });
+
+      const transaction = await tx.transaction.create({
+        data: {
+          wallet_id: id,
+          type: 'deposit',
+          amount,
+          asset_type: resolvedAsset,
+          status: 'completed',
+          description: description ?? null,
+          metadata: { userId },
+        },
+      });
+
+      return { wallet: updated, transaction };
+    });
+
+    logger.operation(operation, 'commit', { walletId: id, newBalance: result.wallet.balance });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    logger.operation(operation, 'rollback', { error: (error as Error).message });
+    const err = error as { statusCode?: number; code?: string; message?: string };
+    res.status(err.statusCode ?? 500).json({
+      success: false,
+      error: { code: err.code ?? 'INTERNAL_ERROR', message: err.message ?? 'Failed to process deposit' },
+    });
+  }
+};
+
+// ─── Withdraw ─────────────────────────────────────────────────────────────────
+
+/**
+ * POST /wallets/:id/withdraw
+ * Remove funds from a wallet atomically with double-spend protection.
+ * Writes an AuditLog entry before updating the balance.
+ */
+export const withdraw = async (req: Request, res: Response): Promise<void> => {
+  const operation = 'withdraw';
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: errors.array() },
+      });
+      return;
+    }
+
+    const { id } = req.params;
+    const { amount, assetType, userId, description } = req.body as {
+      amount: number;
+      assetType?: string;
+      userId?: string;
+      description?: string;
+    };
+
+    logger.operation(operation, 'init', { walletId: id, amount, assetType, userId });
+
+    const supported = getSupportedCurrencies();
+    const resolvedAsset = (assetType ?? 'USD').toUpperCase();
+    if (supported.length > 0 && !supported.includes(resolvedAsset)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'UNSUPPORTED_CURRENCY', message: `Currency ${resolvedAsset} is not supported` },
+      });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const wallet = await tx.wallet.findUnique({ where: { id } });
+      if (!wallet) throw Object.assign(new Error('Wallet not found'), { statusCode: 404, code: 'NOT_FOUND' });
+
+      logger.operation(operation, 'verify', { walletId: id, balance: wallet.balance, amount });
+
+      // Double-spend protection: re-check balance inside the transaction
+      if (wallet.balance < amount) {
+        throw Object.assign(new Error('Insufficient balance'), { statusCode: 422, code: 'INSUFFICIENT_BALANCE' });
+      }
+
+      // Write audit log before mutation (after state is deterministic at this point)
+      await writeAuditLog(tx, {
+        action: operation,
+        entity: 'wallet',
+        entityId: id,
+        userId,
+        before: { balance: wallet.balance },
+        after: { balance: wallet.balance - amount },
+        metadata: { amount, assetType: resolvedAsset, description },
+      });
+
+      const updated = await tx.wallet.update({
+        where: { id },
+        data: { balance: { decrement: amount } },
+      });
+
+      const transaction = await tx.transaction.create({
+        data: {
+          wallet_id: id,
+          type: 'withdrawal',
+          amount,
+          asset_type: resolvedAsset,
+          status: 'completed',
+          description: description ?? null,
+          metadata: { userId },
+        },
+      });
+
+      return { wallet: updated, transaction };
+    });
+
+    logger.operation(operation, 'commit', { walletId: id, newBalance: result.wallet.balance });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    logger.operation(operation, 'rollback', { error: (error as Error).message });
+    const err = error as { statusCode?: number; code?: string; message?: string };
+    res.status(err.statusCode ?? 500).json({
+      success: false,
+      error: { code: err.code ?? 'INTERNAL_ERROR', message: err.message ?? 'Failed to process withdrawal' },
+    });
+  }
+};
+
+// ─── Transfer ─────────────────────────────────────────────────────────────────
+
+/**
+ * POST /wallets/transfer
+ * Atomically move funds from one wallet to another.
+ * - Locks both wallets inside a single DB transaction to prevent double-spend.
+ * - Writes AuditLog entries for both wallets before any update.
+ */
+export const transfer = async (req: Request, res: Response): Promise<void> => {
+  const operation = 'transfer';
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid input data', details: errors.array() },
+      });
+      return;
+    }
+
+    const { fromWalletId, toWalletId, amount, assetType, userId, description } = req.body as {
+      fromWalletId: string;
+      toWalletId: string;
+      amount: number;
+      assetType?: string;
+      userId?: string;
+      description?: string;
+    };
+
+    if (fromWalletId === toWalletId) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_TRANSFER', message: 'Source and destination wallets must be different' },
+      });
+      return;
+    }
+
+    logger.operation(operation, 'init', { fromWalletId, toWalletId, amount, assetType, userId });
+
+    const supported = getSupportedCurrencies();
+    const resolvedAsset = (assetType ?? 'USD').toUpperCase();
+    if (supported.length > 0 && !supported.includes(resolvedAsset)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'UNSUPPORTED_CURRENCY', message: `Currency ${resolvedAsset} is not supported` },
+      });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Fetch both wallets inside the transaction for consistency
+      const [fromWallet, toWallet] = await Promise.all([
+        tx.wallet.findUnique({ where: { id: fromWalletId } }),
+        tx.wallet.findUnique({ where: { id: toWalletId } }),
+      ]);
+
+      if (!fromWallet) throw Object.assign(new Error('Source wallet not found'), { statusCode: 404, code: 'NOT_FOUND' });
+      if (!toWallet) throw Object.assign(new Error('Destination wallet not found'), { statusCode: 404, code: 'NOT_FOUND' });
+
+      logger.operation(operation, 'verify', {
+        fromBalance: fromWallet.balance,
+        toBalance: toWallet.balance,
+        amount,
+      });
+
+      // Double-spend protection: validate balance inside the locked transaction
+      if (fromWallet.balance < amount) {
+        throw Object.assign(new Error('Insufficient balance in source wallet'), { statusCode: 422, code: 'INSUFFICIENT_BALANCE' });
+      }
+
+      // Write audit logs before mutations (after state is deterministic at this point)
+      await writeAuditLog(tx, {
+        action: operation,
+        entity: 'wallet',
+        entityId: fromWalletId,
+        userId,
+        before: { balance: fromWallet.balance },
+        after: { balance: fromWallet.balance - amount },
+        metadata: { amount, assetType: resolvedAsset, toWalletId, description },
+      });
+      await writeAuditLog(tx, {
+        action: operation,
+        entity: 'wallet',
+        entityId: toWalletId,
+        userId,
+        before: { balance: toWallet.balance },
+        after: { balance: toWallet.balance + amount },
+        metadata: { amount, assetType: resolvedAsset, fromWalletId, description },
+      });
+
+      // Apply debit and credit atomically
+      const [updatedFrom, updatedTo] = await Promise.all([
+        tx.wallet.update({ where: { id: fromWalletId }, data: { balance: { decrement: amount } } }),
+        tx.wallet.update({ where: { id: toWalletId }, data: { balance: { increment: amount } } }),
+      ]);
+
+      // Record transactions for both sides
+      const [debitTx, creditTx] = await Promise.all([
+        tx.transaction.create({
+          data: {
+            wallet_id: fromWalletId,
+            type: 'transfer',
+            amount,
+            asset_type: resolvedAsset,
+            status: 'completed',
+            description: description ?? null,
+            metadata: { direction: 'debit', counterpartyWalletId: toWalletId, userId },
+          },
+        }),
+        tx.transaction.create({
+          data: {
+            wallet_id: toWalletId,
+            type: 'transfer',
+            amount,
+            asset_type: resolvedAsset,
+            status: 'completed',
+            description: description ?? null,
+            metadata: { direction: 'credit', counterpartyWalletId: fromWalletId, userId },
+          },
+        }),
+      ]);
+
+      return { fromWallet: updatedFrom, toWallet: updatedTo, debitTransaction: debitTx, creditTransaction: creditTx };
+    });
+
+    logger.operation(operation, 'commit', {
+      fromWalletId,
+      toWalletId,
+      fromNewBalance: result.fromWallet.balance,
+      toNewBalance: result.toWallet.balance,
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    logger.operation(operation, 'rollback', { error: (error as Error).message });
+    const err = error as { statusCode?: number; code?: string; message?: string };
+    res.status(err.statusCode ?? 500).json({
+      success: false,
+      error: { code: err.code ?? 'INTERNAL_ERROR', message: err.message ?? 'Failed to process transfer' },
     });
   }
 };

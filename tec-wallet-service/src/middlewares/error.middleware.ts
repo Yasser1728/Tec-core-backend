@@ -12,7 +12,7 @@ export const errorMiddleware = (
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
-      message: err.message || 'Internal server error',
+      message: 'Internal server error',
     },
   });
 };

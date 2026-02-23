@@ -4,6 +4,7 @@
   "description": "TEC Platform Wallet Service - Multi-wallet management",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
