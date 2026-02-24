@@ -3,6 +3,8 @@ name: Deploy Core Services
 on:
   push:
     branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -30,9 +32,11 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Install Railway CLI
+        if: github.event_name == 'push'
         run: npm install -g @railway/cli
 
       - name: Deploy Core Services Sequentially
+        if: github.event_name == 'push'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
@@ -62,7 +66,7 @@ jobs:
           done
 
       - name: Slack Notification (Core)
-        if: failure()
+        if: failure() && github.event_name == 'push'
         uses: slackapi/slack-github-action@v1
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
