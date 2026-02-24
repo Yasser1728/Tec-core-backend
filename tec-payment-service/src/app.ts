@@ -45,9 +45,15 @@ app.use(
 );
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const corsOrigin = process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '*';
+// ALLOWED_ORIGINS (comma-separated) is preferred; CORS_ORIGIN is kept for
+// backwards compatibility. Falls back to '*' when neither is set.
+const parseCorsOrigins = (): string[] | string => {
+  const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
+  if (!raw || raw === '*') return '*';
+  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+};
 app.use(cors({
-  origin: corsOrigin,
+  origin: parseCorsOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],

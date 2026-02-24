@@ -124,6 +124,7 @@ export const rateLimitMiddleware = async (
     const count = await store.increment(key);
 
     if (count > MAX_REQUESTS) {
+      res.setHeader('Retry-After', String(Math.ceil(WINDOW_MS / 1000)));
       res.status(429).json({
         success: false,
         error: {
