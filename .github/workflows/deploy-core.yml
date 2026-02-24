@@ -1,7 +1,7 @@
 name: Deploy Core Services
 
 on:
-  push:
+  pull_request:
     branches: [main, master]
 
 permissions:
@@ -30,9 +30,22 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Install Railway CLI
+        if: github.event_name == 'push'
         run: npm install -g @railway/cli
 
+      - name: Validate RAILWAY_TOKEN
+        if: github.event_name == 'push'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not set. Configure it under Settings → Secrets → Actions."
+            exit 1
+          fi
+          echo "RAILWAY_TOKEN is present."
+
       - name: Deploy Core Services Sequentially
+        if: github.event_name == 'push'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
@@ -43,7 +56,7 @@ jobs:
             max_attempts=3
             until [ $attempts -ge $max_attempts ]
             do
-              railway up --service $service --environment production --detach && break
+              railway up --service $service --environment production --detach --ci && break
               attempts=$((attempts+1))
               echo "Retry $attempts/$max_attempts for $service..."
               sleep 6
@@ -62,7 +75,7 @@ jobs:
           done
 
       - name: Slack Notification (Core)
-        if: failure()
+        if: failure() && github.event_name == 'push'
         uses: slackapi/slack-github-action@v1
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
