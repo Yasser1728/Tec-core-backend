@@ -38,6 +38,10 @@ RUN npm ci --only=production --ignore-scripts && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 # Copy the generated Prisma client (required at runtime)
 COPY --from=builder /app/prisma/client ./prisma/client
+COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/migrations ./prisma/migrations
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
 
 ARG PORT=5003
 ENV PORT=${PORT}
@@ -48,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:' + process.env.PORT + '/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
 
 # Run the application
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
