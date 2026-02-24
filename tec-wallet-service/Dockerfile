@@ -5,6 +5,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Copy package files and install all dependencies
 # --ignore-scripts skips postinstall (prisma generate); the explicit RUN below handles it
 # after the source is copied and prisma/schema.prisma is available.
@@ -26,6 +28,8 @@ FROM node:20-slim
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
