@@ -8,19 +8,23 @@ export interface LogContext {
   [key: string]: unknown;
 }
 
+// Re-export the Pino-backed logger so the rest of the codebase keeps working.
+export { logger } from '../infra/logger';
+import { logger } from '../infra/logger';
+
 export const logInfo = (message: string, meta?: LogContext): void => {
-  console.log(JSON.stringify({ level: 'info', message, ...meta, timestamp: new Date().toISOString() }));
+  logger.info(message, meta as Record<string, unknown> | undefined);
 };
 
 export const logWarn = (message: string, meta?: LogContext): void => {
-  console.warn(JSON.stringify({ level: 'warn', message, ...meta, timestamp: new Date().toISOString() }));
+  logger.warn(message, meta as Record<string, unknown> | undefined);
 };
 
 export const logError = (message: string, meta?: LogContext): void => {
-  console.error(JSON.stringify({ level: 'error', message, ...meta, timestamp: new Date().toISOString() }));
+  logger.error(message, meta as Record<string, unknown> | undefined);
 };
 
 // Audit log — records security-sensitive events with user context
 export const logAudit = (action: string, context: LogContext): void => {
-  console.log(JSON.stringify({ level: 'audit', action, ...context, timestamp: new Date().toISOString() }));
+  logger.info(action, { level: 'audit', ...context } as Record<string, unknown>);
 };

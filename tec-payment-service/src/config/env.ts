@@ -7,6 +7,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   PI_API_KEY: z.string().min(1),
   PI_APP_ID: z.string().min(1),
+  // Observability (all optional — safe defaults applied in infra/logger.ts etc.)
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
+  SERVICE_NAME: z.string().optional(),
+  SENTRY_DSN: z.string().url().optional(),
 });
 
 export const env = envSchema.parse(process.env);

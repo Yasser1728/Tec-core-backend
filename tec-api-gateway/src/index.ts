@@ -1,14 +1,21 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import dotenv from 'dotenv';
 import proxyRoutes from './routes/proxy';
 import { rateLimiter } from './middleware/rateLimiter';
-import { logger } from './middleware/logger';
+import { httpLogger } from './middleware/logger';
+import { requestIdMiddleware } from './middleware/request-id';
+import { metricsMiddleware } from './middleware/metrics';
+import { register } from './infra/metrics';
+import { initSentry } from './infra/observability';
+import { logger } from './infra/logger';
 import { env } from './config/env';
 
 dotenv.config();
+
+// Initialise Sentry before anything else so errors during startup are captured.
+initSentry();
 
 const app: Application = express();
 const PORT = env.PORT;
@@ -40,7 +47,10 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(morgan('combined'));
+// ─── Observability middleware (before routes) ─────────────────────────────────
+app.use(requestIdMiddleware);
+app.use(httpLogger);
+app.use(metricsMiddleware);
 app.use(rateLimiter);
 
 app.get('/health', async (_req, res) => {
@@ -115,7 +125,18 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-app.use('/api', logger, proxyRoutes);
+// Readiness probe — returns 200 once the process is ready to serve traffic.
+app.get('/ready', (_req, res) => {
+  res.json({ status: 'ready', service: 'api-gateway', timestamp: new Date().toISOString() });
+});
+
+// Prometheus metrics endpoint.
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
+app.use('/api', proxyRoutes);
 
 app.use('*', (_req, res) => {
   res.status(404).json({
@@ -128,7 +149,7 @@ app.use('*', (_req, res) => {
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('API Gateway Error:', err);
+  logger.error('API Gateway Error', { message: err.message, stack: err.stack });
   res.status(500).json({
     success: false,
     error: {
@@ -139,10 +160,10 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 API Gateway running on port ${PORT}`);
-  console.log(`📡 Auth Service: ${AUTH_SERVICE_URL}`);
-  console.log(`💰 Wallet Service: ${WALLET_SERVICE_URL}`);
-  console.log(`💳 Payment Service: ${PAYMENT_SERVICE_URL}`);
+  logger.info(`🚀 API Gateway running on port ${PORT}`);
+  logger.info(`📡 Auth Service: ${AUTH_SERVICE_URL}`);
+  logger.info(`💰 Wallet Service: ${WALLET_SERVICE_URL}`);
+  logger.info(`💳 Payment Service: ${PAYMENT_SERVICE_URL}`);
 });
 
 export default app;

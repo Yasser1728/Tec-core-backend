@@ -75,15 +75,15 @@ describe('Logger operation trace', () => {
     });
   });
 
-  it('logs errors to console.error on rollback', () => {
-    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  it('logs errors to process.stdout on rollback', () => {
+    const spy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     logger.operation('transfer', 'rollback', { error: 'test' });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
 
-  it('logs info to console.log on commit', () => {
-    const spy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  it('logs info to process.stdout on commit', () => {
+    const spy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     logger.operation('deposit', 'commit', { walletId: 'abc' });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
