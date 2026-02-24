@@ -1,38 +1,17 @@
 /**
  * Structured logger for the Payment Service.
- * Emits JSON log lines to stdout/stderr, filtered by LOG_LEVEL.
+ * Delegates to the Pino-backed infra logger.
  */
 
 export interface LogContext {
   [key: string]: unknown;
 }
 
-const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-const levels: Record<string, number> = { error: 0, warn: 1, info: 2, debug: 3 };
-const currentLevel = levels[LOG_LEVEL] ?? levels['info'];
+// Re-export the Pino-backed logger (maintains object-style API).
+export { logger } from '../infra/logger';
+import { logger } from '../infra/logger';
 
-const log = (level: string, message: string, meta?: LogContext): void => {
-  if ((levels[level] ?? 0) <= currentLevel) {
-    const entry = { level, message, timestamp: new Date().toISOString(), ...(meta ?? {}) };
-    if (level === 'error') {
-      console.error(JSON.stringify(entry));
-    } else if (level === 'warn') {
-      console.warn(JSON.stringify(entry));
-    } else {
-      console.log(JSON.stringify(entry));
-    }
-  }
-};
-
-export const logInfo = (message: string, meta?: LogContext): void => log('info', message, meta);
-export const logWarn = (message: string, meta?: LogContext): void => log('warn', message, meta);
-export const logError = (message: string, meta?: LogContext): void => log('error', message, meta);
-export const logDebug = (message: string, meta?: LogContext): void => log('debug', message, meta);
-
-/** Object-style logger alias (used by PR-13 middleware implementations). */
-export const logger = {
-  error: (message: string, meta?: LogContext) => log('error', message, meta),
-  warn:  (message: string, meta?: LogContext) => log('warn',  message, meta),
-  info:  (message: string, meta?: LogContext) => log('info',  message, meta),
-  debug: (message: string, meta?: LogContext) => log('debug', message, meta),
-};
+export const logInfo  = (message: string, meta?: LogContext): void => logger.info(message,  meta as Record<string, unknown> | undefined);
+export const logWarn  = (message: string, meta?: LogContext): void => logger.warn(message,  meta as Record<string, unknown> | undefined);
+export const logError = (message: string, meta?: LogContext): void => logger.error(message, meta as Record<string, unknown> | undefined);
+export const logDebug = (message: string, meta?: LogContext): void => logger.debug(message, meta as Record<string, unknown> | undefined);

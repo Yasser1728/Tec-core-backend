@@ -1,19 +1,36 @@
-import { Request, Response, NextFunction } from 'express';
+/**
+ * HTTP request logging middleware.
+ *
+ * Uses pino-http to emit structured JSON log lines (one per request/response).
+ * Replaces the previous console.log + morgan approach.
+ * Sensitive headers are redacted before logging.
+ */
+import { randomUUID } from 'crypto';
+import PinoHttp from 'pino-http';
+import pinoInstance from '../infra/logger';
 
-// Request logging middleware
-export const logger = (req: Request, res: Response, next: NextFunction) => {
-  const start = Date.now();
-  
-  // Log request
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  
-  // Log response when finished
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.path} ${res.statusCode} - ${duration}ms`
-    );
-  });
-  
-  next();
-};
+export const httpLogger = PinoHttp({
+  logger: pinoInstance,
+  // Include requestId from the x-request-id header in each log line.
+  genReqId: (req) => {
+    const id = req.headers['x-request-id'];
+    return (typeof id === 'string' && id.length > 0 ? id : randomUUID()) as string;
+  },
+  redact: {
+    paths: ['req.headers.authorization', 'req.headers.cookie'],
+    censor: '[REDACTED]',
+  },
+  // Suppress logging for health/ready/metrics probes to reduce noise.
+  autoLogging: {
+    ignore: (req) => {
+      const path = req.url ?? '';
+      return path === '/health' || path === '/ready' || path === '/metrics';
+    },
+  },
+});
+
+/**
+ * Legacy named export kept for any existing imports.
+ * @deprecated Use `httpLogger` instead.
+ */
+export const logger = httpLogger;

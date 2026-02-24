@@ -1,19 +1,14 @@
-const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-
-const levels: Record<string, number> = { error: 0, warn: 1, info: 2, debug: 3 };
-
-const currentLevel = levels[LOG_LEVEL] ?? levels['info'];
+// Re-export the Pino-backed logger for backward compatibility,
+// extended with the wallet-specific `operation` helper.
+import { logger as pinoLogger } from '../infra/logger';
 
 const log = (level: string, message: string, meta?: unknown): void => {
-  if ((levels[level] ?? 0) <= currentLevel) {
-    const entry = { level, message, timestamp: new Date().toISOString(), ...(meta ? { meta } : {}) };
-    if (level === 'error') {
-      console.error(JSON.stringify(entry));
-    } else if (level === 'warn') {
-      console.warn(JSON.stringify(entry));
-    } else {
-      console.log(JSON.stringify(entry));
-    }
+  const m = meta as Record<string, unknown> | undefined;
+  switch (level) {
+    case 'error': pinoLogger.error(message, m); break;
+    case 'warn':  pinoLogger.warn(message, m);  break;
+    case 'debug': pinoLogger.debug(message, m); break;
+    default:      pinoLogger.info(message, m);  break;
   }
 };
 

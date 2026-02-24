@@ -16,13 +16,15 @@ const createProxyOptions = (target: string): Options => ({
     // Remove /api prefix when forwarding to services
     return path.replace(/^\/api/, '');
   },
-  onProxyReq: (_proxyReq, req) => {
-    // Log proxy requests
-    console.log(`[Proxy] ${req.method} ${req.path} → ${target}`);
+  onProxyReq: (proxyReq, req) => {
+    // Forward the correlation ID so downstream services can include it in logs.
+    const requestId = req.headers['x-request-id'];
+    if (requestId) {
+      proxyReq.setHeader('x-request-id', requestId);
+    }
   },
-  onProxyRes: (proxyRes, req) => {
-    // Log proxy responses
-    console.log(`[Proxy] ${req.method} ${req.path} ← ${proxyRes.statusCode}`);
+  onProxyRes: (_proxyRes, _req) => {
+    // Intentionally left minimal — pino-http logs both request and response.
   },
   onError: (err, req, res) => {
     console.error(`[Proxy Error] ${req.method} ${req.path}:`, err.message);

@@ -4,12 +4,18 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import paymentRoutes from './routes/payment.routes';
-import { requestId } from './middlewares/requestId.middleware';
+import { requestIdMiddleware } from './middleware/request-id';
+import { metricsMiddleware } from './middleware/metrics';
+import { register } from './infra/metrics';
+import { initSentry } from './infra/observability';
 import { errorMiddleware } from './middlewares/error.middleware';
 import { initIdempotencyStore } from './middlewares/idempotency.middleware';
 import { logger } from './utils/logger';
 
 dotenv.config();
+
+// Initialise Sentry before anything else so errors during startup are captured.
+initSentry();
 
 const app: Application = express();
 
@@ -65,7 +71,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Request correlation (X-Request-Id) ──────────────────────────────────────
-app.use(requestId);
+app.use(requestIdMiddleware);
+
+// ─── Observability: HTTP metrics tracking ─────────────────────────────────────
+app.use(metricsMiddleware);
 
 // ─── Idempotency store – initialise best available backend ────────────────────
 // Uses Redis when REDIS_URL is set; falls back to in-memory otherwise.
@@ -99,6 +108,17 @@ app.get('/health', (_req, res) => {
     uptime,
     version: SERVICE_VERSION,
   });
+});
+
+// ─── Readiness probe ──────────────────────────────────────────────────────────
+app.get('/ready', (_req, res) => {
+  res.json({ status: 'ready', service: 'payment-service', timestamp: new Date().toISOString() });
+});
+
+// ─── Prometheus metrics endpoint ──────────────────────────────────────────────
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────

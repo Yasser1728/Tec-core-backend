@@ -4,9 +4,16 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import walletRoutes from './routes/wallet.routes';
 import { logger } from './utils/logger';
+import { requestIdMiddleware } from './middleware/request-id';
+import { metricsMiddleware } from './middleware/metrics';
+import { register } from './infra/metrics';
+import { initSentry } from './infra/observability';
 import { env } from './config/env';
 
 dotenv.config();
+
+// Initialise Sentry before anything else so errors during startup are captured.
+initSentry();
 
 const app: Application = express();
 const PORT = env.PORT;
@@ -57,6 +64,10 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ─── Observability middleware ─────────────────────────────────────────────────
+app.use(requestIdMiddleware);
+app.use(metricsMiddleware);
+
 // Health check
 app.get('/health', (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
@@ -67,6 +78,17 @@ app.get('/health', (_req, res) => {
     uptime,
     version: SERVICE_VERSION,
   });
+});
+
+// Readiness probe.
+app.get('/ready', (_req, res) => {
+  res.json({ status: 'ready', service: 'wallet-service', timestamp: new Date().toISOString() });
+});
+
+// Prometheus metrics endpoint.
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
 });
 
 // Routes
