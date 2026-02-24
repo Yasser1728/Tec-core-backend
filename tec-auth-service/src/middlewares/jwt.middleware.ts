@@ -1,51 +1,101 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../utils/jwt';
+import jwt from 'jsonwebtoken';
+import { logWarn, logError } from '../utils/logger';
 
-// Extend Express Request to include userId
-declare module 'express-serve-static-core' {
-  interface Request {
-    userId?: string;
+/** Shape of the JWT payload issued by the auth service. */
+interface TokenPayload {
+  id?: string;
+  userId?: string;
+  role?: string;
+  sessionId?: string;
+  iat?: number;
+  exp?: number;
+}
+
+/** Clock tolerance in seconds applied when verifying token expiry. */
+const getClockTolerance = (): number =>
+  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '0', 10);
+
+/**
+ * Decode the JWT header without verifying it (to inspect `alg` before full
+ * verification) or return null on malformed input.
+ */
+function decodeHeader(token: string): { alg?: string } | null {
+  try {
+    const [headerB64] = token.split('.');
+    const json = Buffer.from(headerB64, 'base64url').toString('utf8');
+    return JSON.parse(json) as { alg?: string };
+  } catch {
+    return null;
   }
 }
 
-// Parse and verify JWT from Authorization header; sends 401 on failure
+/**
+ * Verifies the Bearer JWT in the Authorization header.
+ *
+ * - Returns 401 for missing/invalid/expired tokens and unsupported algorithms.
+ * - Returns 500 when JWT_SECRET is not configured.
+ * - On success, attaches `req.userId` and `req.user = { id, role, sessionId }`.
+ */
 export const jwtMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'AUTHENTICATION_ERROR',
-          message: 'No token provided',
-        },
-      });
-      return;
-    }
+  const authHeader = req.headers.authorization;
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    const decoded = verifyAccessToken(token);
-
-    if (!decoded) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'AUTHENTICATION_ERROR',
-          message: 'Invalid or expired token',
-        },
-      });
-      return;
-    }
-
-    req.userId = decoded.userId;
-    next();
-  } catch {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).json({
       success: false,
-      error: {
-        code: 'AUTHENTICATION_ERROR',
-        message: 'Authentication failed',
-      },
+      error: { code: 'AUTHENTICATION_ERROR', message: 'No token provided' },
+    });
+    return;
+  }
+
+  const token = authHeader.substring(7); // strip 'Bearer '
+
+  // Reject alg:none and non-HS256 tokens before signature verification.
+  const header = decodeHeader(token);
+  if (!header || header.alg !== 'HS256') {
+    logWarn('JWT rejected: unsupported algorithm', { alg: header?.alg });
+    res.status(401).json({
+      success: false,
+      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
+    });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    logError('JWT_SECRET environment variable is not set');
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      clockTolerance: getClockTolerance(),
+    }) as TokenPayload;
+
+    // Support both `id` and legacy `userId` payload fields.
+    const userId = decoded.id ?? decoded.userId;
+    if (!userId) {
+      logWarn('JWT rejected: missing user identifier in payload');
+      res.status(401).json({
+        success: false,
+        error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
+      });
+      return;
+    }
+
+    req.userId = userId;
+    req.user = { id: userId, role: decoded.role, sessionId: decoded.sessionId };
+    next();
+  } catch (error) {
+    logWarn('JWT verification failed', { message: (error as Error).message });
+    res.status(401).json({
+      success: false,
+      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
     });
   }
 };
