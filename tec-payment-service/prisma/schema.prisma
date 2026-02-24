@@ -29,10 +29,12 @@ model Payment {
   completed_at   DateTime?
   failed_at      DateTime?
   cancelled_at   DateTime?
+  deleted_at     DateTime?
   auditLogs      PaymentAuditLog[]
 
   @@index([user_id])
   @@index([status])
+  @@index([created_at])
   @@map("payments")
 }
 
