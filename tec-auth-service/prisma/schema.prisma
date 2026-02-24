@@ -30,6 +30,8 @@ model User {
   twoFactorAuth TwoFactorAuth?
   devices       Device[]
   kycData       KycData?
+  subscriptions Subscription[]
+  payments      Payment[]
 
   @@map("users")
 }
@@ -126,4 +128,44 @@ model KycData {
   user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("kyc_data")
+}
+
+// ─── Subscription Models ─────────────────────────────────────────────────────
+
+model Plan {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  description   String
+  price         Float
+  currency      String
+  features      String[]
+  duration      Int
+  created_at    DateTime       @default(now())
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id         String   @id @default(uuid())
+  user_id    String
+  plan_id    String
+  status     String   @default("active")
+  end_date   DateTime
+  auto_renew Boolean  @default(true)
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan       Plan     @relation(fields: [plan_id], references: [id])
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id         String   @id @default(uuid())
+  user_id    String
+  metadata   Json?
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("payments")
 }

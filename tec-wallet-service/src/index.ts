@@ -4,11 +4,12 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import walletRoutes from './routes/wallet.routes';
 import { logger } from './utils/logger';
+import { env } from './config/env';
 
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 5002;
+const PORT = env.PORT;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 

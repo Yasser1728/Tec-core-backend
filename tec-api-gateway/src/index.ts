@@ -6,17 +6,18 @@ import dotenv from 'dotenv';
 import proxyRoutes from './routes/proxy';
 import { rateLimiter } from './middleware/rateLimiter';
 import { logger } from './middleware/logger';
+import { env } from './config/env';
 
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
-const WALLET_SERVICE_URL = process.env.WALLET_SERVICE_URL || 'http://localhost:5002';
-const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:5003';
+const AUTH_SERVICE_URL = env.AUTH_SERVICE_URL;
+const WALLET_SERVICE_URL = env.WALLET_SERVICE_URL;
+const PAYMENT_SERVICE_URL = env.PAYMENT_SERVICE_URL;
 
 interface ServiceStatus {
   status: 'ok' | 'error';

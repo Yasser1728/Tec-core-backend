@@ -8,11 +8,12 @@ import kycRoutes from './routes/kyc.routes';
 import securityRoutes from './routes/security.routes';
 import profileRoutes from './routes/profile.routes';
 import { rateLimitMiddleware } from './middlewares/rate-limit.middleware';
+import { env } from './config/env';
 
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 5001;
+const PORT = env.PORT;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 
