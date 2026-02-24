@@ -13,27 +13,28 @@ datasource db {
 }
 
 // ─── Payment Models ────────────────────────────────────────────────────────────
-// NOTE: This is the scaffold model used to type the Prisma Client for Phase 2/3.
-// Full column definitions, indexes, and DB migrations will be formalised in Phase 4.
 
 model Payment {
-  id             String    @id @default(uuid())
+  id             String            @id @default(uuid())
   user_id        String
   amount         Float
-  currency       String    @default("PI")
+  currency       String            @default("PI")
   payment_method String
-  status         String    @default("created")
-  pi_payment_id  String?   @unique
+  status         String            @default("created")
+  pi_payment_id  String?           @unique
   metadata       Json?
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  created_at     DateTime          @default(now())
+  updated_at     DateTime          @updatedAt
   approved_at    DateTime?
   completed_at   DateTime?
   failed_at      DateTime?
   cancelled_at   DateTime?
+  deleted_at     DateTime?
+  auditLogs      PaymentAuditLog[]
 
   @@index([user_id])
   @@index([status])
+  @@index([created_at])
   @@map("payments")
 }
 
@@ -52,6 +53,7 @@ model PaymentAuditLog {
   id        String         @id @default(uuid())
   userId    String
   paymentId String?
+  payment   Payment?       @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   eventType AuditEventType
   metadata  Json?
   ipAddress String?
@@ -60,5 +62,6 @@ model PaymentAuditLog {
 
   @@index([userId])
   @@index([paymentId])
+  @@index([timestamp])
   @@map("payment_audit_logs")
 }

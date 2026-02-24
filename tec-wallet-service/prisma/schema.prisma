@@ -24,8 +24,10 @@ model Wallet {
   is_primary     Boolean       @default(false)
   created_at     DateTime      @default(now())
   updated_at     DateTime      @updatedAt
+  deleted_at     DateTime?
   transactions   Transaction[]
 
+  @@index([user_id])
   @@map("wallets")
 }
 
@@ -45,6 +47,7 @@ model Transaction {
 
   @@index([wallet_id])
   @@index([status])
+  @@index([created_at])
   @@map("transactions")
 }
 
@@ -52,13 +55,14 @@ model Transaction {
 
 /// Account tracks a per-currency balance for a user (separate from legacy Wallet).
 model Account {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   user_id       String
   /// ISO 4217 currency code or asset symbol (e.g. "USD", "PI", "BTC")
   currency_code String
-  balance       Float    @default(0)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  balance       Float     @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
 
   @@unique([user_id, currency_code])
   @@index([user_id])
