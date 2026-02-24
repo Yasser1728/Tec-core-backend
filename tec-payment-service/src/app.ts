@@ -1,9 +1,15 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { v4 as uuidv4 } from 'uuid';
+import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 import paymentRoutes from './routes/payment.routes';
+import { requestId } from './middlewares/requestId.middleware';
 import { errorMiddleware } from './middlewares/error.middleware';
+import { initIdempotencyStore } from './middlewares/idempotency.middleware';
+import { logger } from './utils/logger';
+
+dotenv.config();
 
 const app: Application = express();
 
@@ -53,12 +59,29 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Request correlation (X-Request-Id) ──────────────────────────────────────
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const requestId = (req.headers['x-request-id'] as string | undefined) || uuidv4();
-  req.requestId = requestId;
-  res.setHeader('X-Request-Id', requestId);
-  next();
-});
+app.use(requestId);
+
+// ─── Idempotency store – initialise best available backend ────────────────────
+// Uses Redis when REDIS_URL is set; falls back to in-memory otherwise.
+initIdempotencyStore();
+logger.info('Idempotency store initialised');
+
+// ─── Global IP-based rate limiter (pre-authentication, applied to all routes) ─
+app.use(
+  rateLimit({
+    windowMs:        parseInt(process.env.RATE_LIMIT_GLOBAL_WINDOW_MS ?? '60000', 10),
+    max:             parseInt(process.env.RATE_LIMIT_GLOBAL_MAX ?? '200', 10),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: {
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many requests. Please retry after the window resets.',
+      },
+    },
+  })
+);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {

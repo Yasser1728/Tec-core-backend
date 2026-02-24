@@ -1,21 +1,17 @@
 import { PrismaClient } from '../../prisma/client';
 
-// Typed global to hold the singleton Prisma Client in development
-declare global {
-  var __prisma: PrismaClient | undefined;
-}
+/** Typed global for singleton reuse across hot-reloads in non-production envs. */
+type GlobalWithPrisma = typeof globalThis & { _prismaPayment?: PrismaClient };
+
+const globalForPrisma = global as GlobalWithPrisma;
 
 // Prisma Client singleton pattern
-let prisma: PrismaClient;
+const prisma: PrismaClient =
+  globalForPrisma._prismaPayment ?? new PrismaClient();
 
-if (process.env.NODE_ENV === 'production') {
-  prisma = new PrismaClient();
-} else {
-  // In development, use a global variable to prevent multiple instances
-  if (!global.__prisma) {
-    global.__prisma = new PrismaClient();
-  }
-  prisma = global.__prisma;
+if (process.env.NODE_ENV !== 'production') {
+  // Re-use the same client across hot-reloads to avoid exhausting connections.
+  globalForPrisma._prismaPayment = prisma;
 }
 
 export { prisma };

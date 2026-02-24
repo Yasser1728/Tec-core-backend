@@ -28,3 +28,11 @@ export const logInfo = (message: string, meta?: LogContext): void => log('info',
 export const logWarn = (message: string, meta?: LogContext): void => log('warn', message, meta);
 export const logError = (message: string, meta?: LogContext): void => log('error', message, meta);
 export const logDebug = (message: string, meta?: LogContext): void => log('debug', message, meta);
+
+/** Object-style logger alias (used by PR-13 middleware implementations). */
+export const logger = {
+  error: (message: string, meta?: LogContext) => log('error', message, meta),
+  warn:  (message: string, meta?: LogContext) => log('warn',  message, meta),
+  info:  (message: string, meta?: LogContext) => log('info',  message, meta),
+  debug: (message: string, meta?: LogContext) => log('debug', message, meta),
+};

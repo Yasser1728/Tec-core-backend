@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
-import { logError } from '../utils/logger';
+import { logger } from '../utils/logger';
 
 export const errorMiddleware = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): void => {
-  logError('Unhandled error', { message: err.message, stack: err.stack });
+  logger.error('Unhandled error', {
+    message: err.message,
+    stack: err.stack,
+    requestId: req.headers['x-request-id'],
+  });
   res.status(500).json({
     success: false,
     error: {
