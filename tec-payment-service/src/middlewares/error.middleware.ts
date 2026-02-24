@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { Sentry, isSentryEnabled } from '../infra/observability';
 
 export const errorMiddleware = (
   err: Error,
@@ -7,6 +8,9 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction,
 ): void => {
+  if (isSentryEnabled()) {
+    Sentry.captureException(err);
+  }
   logger.error('Unhandled error', {
     message: err.message,
     stack: err.stack,

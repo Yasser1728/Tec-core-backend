@@ -8,7 +8,7 @@ import { httpLogger } from './middleware/logger';
 import { requestIdMiddleware } from './middleware/request-id';
 import { metricsMiddleware } from './middleware/metrics';
 import { register } from './infra/metrics';
-import { initSentry } from './infra/observability';
+import { initSentry, Sentry, isSentryEnabled } from './infra/observability';
 import { logger } from './infra/logger';
 import { env } from './config/env';
 
@@ -148,8 +148,15 @@ app.use('*', (_req, res) => {
   });
 });
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error('API Gateway Error', { message: err.message, stack: err.stack });
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (isSentryEnabled()) {
+    Sentry.captureException(err);
+  }
+  logger.error('API Gateway Error', {
+    message: err.message,
+    stack: err.stack,
+    requestId: req.headers['x-request-id'],
+  });
   res.status(500).json({
     success: false,
     error: {
