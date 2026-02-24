@@ -26,6 +26,7 @@ model Wallet {
   updated_at     DateTime      @updatedAt
   transactions   Transaction[]
 
+  @@index([user_id])
   @@map("wallets")
 }
 
@@ -45,6 +46,7 @@ model Transaction {
 
   @@index([wallet_id])
   @@index([status])
+  @@index([created_at])
   @@map("transactions")
 }
 

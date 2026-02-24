@@ -58,6 +58,7 @@ model Session {
   created_at DateTime @default(now())
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id])
   @@map("sessions")
 }
 
@@ -72,6 +73,7 @@ model AuditLog {
   created_at DateTime @default(now())
   user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
+  @@index([user_id])
   @@map("audit_logs")
 }
 
@@ -85,6 +87,8 @@ model LoginAttempt {
   created_at DateTime @default(now())
   user       User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
+  @@index([user_id])
+  @@index([email])
   @@map("login_attempts")
 }
 
@@ -108,6 +112,7 @@ model Device {
   last_login DateTime @default(now())
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id])
   @@map("devices")
 }
 
@@ -154,9 +159,11 @@ model Subscription {
   end_date   DateTime
   auto_renew Boolean  @default(true)
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   plan       Plan     @relation(fields: [plan_id], references: [id])
 
+  @@index([user_id, status])
   @@map("subscriptions")
 }
 
