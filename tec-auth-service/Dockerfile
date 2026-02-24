@@ -5,6 +5,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 RUN npm ci --ignore-scripts
 
@@ -22,6 +24,8 @@ FROM node:20-slim
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm ci --only=production --ignore-scripts && npm cache clean --force
