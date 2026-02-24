@@ -35,6 +35,17 @@ jobs:
         if: github.event_name == 'push'
         run: npm install -g @railway/cli
 
+      - name: Validate RAILWAY_TOKEN
+        if: github.event_name == 'push'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not set. Configure it under Settings → Secrets → Actions."
+            exit 1
+          fi
+          echo "RAILWAY_TOKEN is present."
+
       - name: Deploy Core Services Sequentially
         if: github.event_name == 'push'
         env:
@@ -47,7 +58,7 @@ jobs:
             max_attempts=3
             until [ $attempts -ge $max_attempts ]
             do
-              railway up --service $service --environment production --detach && break
+              railway up --service $service --environment production --detach --ci && break
               attempts=$((attempts+1))
               echo "Retry $attempts/$max_attempts for $service..."
               sleep 6
