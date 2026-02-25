@@ -9,6 +9,7 @@ CREATE TABLE "wallets" (
     "is_primary" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "wallets_pkey" PRIMARY KEY ("id")
 );
@@ -37,6 +38,7 @@ CREATE TABLE "accounts" (
     "balance" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "accounts_pkey" PRIMARY KEY ("id")
 );
@@ -59,7 +61,7 @@ CREATE TABLE "audit_logs" (
 -- CreateIndex
 CREATE UNIQUE INDEX "wallets_wallet_address_key" ON "wallets"("wallet_address");
 
--- CreateIndex: support fetching all wallets for a user
+-- CreateIndex
 CREATE INDEX "wallets_user_id_idx" ON "wallets"("user_id");
 
 -- CreateIndex
@@ -68,7 +70,7 @@ CREATE INDEX "transactions_wallet_id_idx" ON "transactions"("wallet_id");
 -- CreateIndex
 CREATE INDEX "transactions_status_idx" ON "transactions"("status");
 
--- CreateIndex: support paginated transaction history ordered by time
+-- CreateIndex
 CREATE INDEX "transactions_created_at_idx" ON "transactions"("created_at");
 
 -- CreateIndex
