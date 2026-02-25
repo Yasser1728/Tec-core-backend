@@ -17,6 +17,7 @@ CREATE TABLE "payments" (
     "completed_at" TIMESTAMP(3),
     "failed_at" TIMESTAMP(3),
     "cancelled_at" TIMESTAMP(3),
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "payments_pkey" PRIMARY KEY ("id")
 );
@@ -45,13 +46,16 @@ CREATE INDEX "payments_user_id_idx" ON "payments"("user_id");
 CREATE INDEX "payments_status_idx" ON "payments"("status");
 
 -- CreateIndex
+CREATE INDEX "payments_created_at_idx" ON "payments"("created_at");
+
+-- CreateIndex
 CREATE INDEX "payment_audit_logs_userId_idx" ON "payment_audit_logs"("userId");
 
 -- CreateIndex
 CREATE INDEX "payment_audit_logs_paymentId_idx" ON "payment_audit_logs"("paymentId");
 
--- CreateIndex: support time-range queries over audit logs
+-- CreateIndex
 CREATE INDEX "payment_audit_logs_timestamp_idx" ON "payment_audit_logs"("timestamp");
 
--- AddForeignKey: enforce referential integrity between audit logs and payments
+-- AddForeignKey
 ALTER TABLE "payment_audit_logs" ADD CONSTRAINT "payment_audit_logs_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "payments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
