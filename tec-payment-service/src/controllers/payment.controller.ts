@@ -8,6 +8,7 @@ import {
 } from '@prisma/client/runtime/library';
 import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
+import { piApprovePayment, piCompletePayment, PiApiError } from '../services/payment.service';
 
 // Helper function to safely get metadata as an object
 const getMetadataObject = (metadata: unknown): Record<string, unknown> => {
@@ -207,6 +208,23 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // ─── Pi Network: approve on Pi side before persisting ─────────────────
+    if (payment.payment_method === 'pi' && pi_payment_id) {
+      try {
+        await piApprovePayment(pi_payment_id);
+      } catch (piErr) {
+        if (piErr instanceof PiApiError) {
+          logWarn('Pi API approve error', { payment_id, code: piErr.code, message: piErr.message });
+          res.status(piErr.httpStatus).json({
+            success: false,
+            error: { code: piErr.code, message: piErr.message },
+          });
+          return;
+        }
+        throw piErr;
+      }
+    }
+
     const updatedPayment = await prisma.payment.update({
       where: { id: payment_id },
       data: {
@@ -303,6 +321,62 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     const { payment_id, transaction_id } = req.body;
     
     logInfo('Completing payment', { payment_id, transaction_id, requestId: req.requestId });
+
+    // ─── Pi Network: pre-flight state check + Pi API call ─────────────────
+    // Fetch payment details outside the DB transaction so that a potentially
+    // long-running Pi API call does not hold an open DB transaction.
+    // A secondary state check inside the subsequent $transaction guards against
+    // concurrent state changes that may occur while the Pi API call is in flight.
+    const preFlightPayment = await prisma.payment.findUnique({
+      where: { id: payment_id },
+      select: { status: true, payment_method: true, pi_payment_id: true, user_id: true },
+    });
+
+    if (!preFlightPayment) {
+      logWarn('Payment not found (pre-flight)', { payment_id });
+      res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Payment not found' },
+      });
+      return;
+    }
+
+    if (!isTransitionAllowed(preFlightPayment.status, 'completed')) {
+      logWarn('Invalid transition attempt: complete (pre-flight)', { payment_id, from: preFlightPayment.status });
+      void createAuditLog({
+        userId: preFlightPayment.user_id,
+        paymentId: payment_id,
+        eventType: 'INVALID_TRANSITION_ATTEMPT',
+        metadata: { from: preFlightPayment.status, to: 'completed' },
+        ipAddress: getClientIp(req),
+        requestId: req.requestId,
+      });
+      res.status(409).json({
+        success: false,
+        error: {
+          code: 'INVALID_STATUS',
+          message: `Payment cannot transition from '${preFlightPayment.status}' to 'completed'`,
+        },
+      });
+      return;
+    }
+
+    if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
+      try {
+        await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
+      } catch (piErr) {
+        if (piErr instanceof PiApiError) {
+          logWarn('Pi API complete error', { payment_id, code: piErr.code, message: piErr.message });
+          res.status(piErr.httpStatus).json({
+            success: false,
+            error: { code: piErr.code, message: piErr.message },
+          });
+          return;
+        }
+        throw piErr;
+      }
+    }
+    // ─── end Pi Network pre-flight ─────────────────────────────────────────
 
     const updatedPayment = await prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({

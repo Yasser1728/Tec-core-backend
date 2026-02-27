@@ -7,6 +7,11 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   PI_API_KEY: z.string().min(1),
   PI_APP_ID: z.string().min(1),
+  // Pi Network environment: 'true' = Testnet/Sandbox (default), 'false' = Mainnet/Production
+  PI_SANDBOX: z.string().default('true'),
+  // Pi API request timeouts in milliseconds (default: 30 000)
+  PI_API_APPROVE_TIMEOUT: z.coerce.number().positive().default(30000),
+  PI_API_COMPLETE_TIMEOUT: z.coerce.number().positive().default(30000),
   // Internal service-to-service auth secret
   INTERNAL_SECRET: z.string().min(1).optional(),
   // Observability (all optional — safe defaults applied in infra/logger.ts etc.)
