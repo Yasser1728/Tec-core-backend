@@ -119,6 +119,14 @@ app.get('/payments/:id/status', [
 describe('Payment Service Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Mock global fetch so Pi Network API calls succeed without hitting the real API
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: jest.fn().mockResolvedValue('{}'),
+      json: jest.fn().mockResolvedValue({}),
+    } as unknown as Response);
+    process.env.PI_API_KEY = 'test-pi-api-key';
   });
 
   describe('POST /payments/create', () => {
