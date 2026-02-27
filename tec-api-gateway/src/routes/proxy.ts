@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
+import { injectInternalKey } from '../middleware/internal-auth';
 
 const router = Router();
 
@@ -41,18 +42,21 @@ const createProxyOptions = (target: string): Options => ({
 // Auth Service routes: /api/auth/*
 router.use(
   '/auth',
+  injectInternalKey,
   createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
 );
 
 // Wallet Service routes: /api/wallets/*
 router.use(
   '/wallets',
+  injectInternalKey,
   createProxyMiddleware(createProxyOptions(WALLET_SERVICE_URL))
 );
 
 // Payment Service routes: /api/payments/*
 router.use(
   '/payments',
+  injectInternalKey,
   createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL))
 );
 

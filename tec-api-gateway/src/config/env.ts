@@ -6,6 +6,10 @@ const envSchema = z.object({
   AUTH_SERVICE_URL: z.string().url(),
   WALLET_SERVICE_URL: z.string().url(),
   PAYMENT_SERVICE_URL: z.string().url(),
+  // Internal service-to-service auth secret (required in production)
+  INTERNAL_SECRET: z.string().min(1).optional(),
+  // CORS — comma-separated list of allowed origins; defaults to empty (deny all)
+  ALLOWED_ORIGINS: z.string().optional(),
   // Observability (all optional — safe defaults applied in infra/logger.ts etc.)
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
   SERVICE_NAME: z.string().optional(),

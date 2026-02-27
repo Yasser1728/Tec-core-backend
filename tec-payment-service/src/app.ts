@@ -10,6 +10,7 @@ import { register } from './infra/metrics';
 import { initSentry } from './infra/observability';
 import { errorMiddleware } from './middlewares/error.middleware';
 import { initIdempotencyStore } from './middlewares/idempotency.middleware';
+import { validateInternalKey } from './middleware/internal-auth';
 import { logger } from './utils/logger';
 
 dotenv.config();
@@ -52,11 +53,13 @@ app.use(
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // ALLOWED_ORIGINS (comma-separated) is preferred; CORS_ORIGIN is kept for
-// backwards compatibility. Falls back to '*' when neither is set.
-const parseCorsOrigins = (): string[] | string => {
+// backwards compatibility. Defaults to false (deny all) when neither is set.
+const parseCorsOrigins = (): string[] | string | false => {
   const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
-  if (!raw || raw === '*') return '*';
-  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+  if (!raw) return false;
+  if (raw === '*') return '*';
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return origins.length > 0 ? origins : false;
 };
 app.use(cors({
   origin: parseCorsOrigins(),
@@ -122,6 +125,7 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
+app.use(validateInternalKey);
 app.use('/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 
