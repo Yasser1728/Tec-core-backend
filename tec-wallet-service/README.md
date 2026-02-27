@@ -111,3 +111,4 @@ npm test
 - All query parameters and route parameters are validated with `express-validator`.
 - Wallet IDs are validated as UUIDs.
 - Transactions endpoint supports filtering by both `type` and `status` simultaneously.
+
