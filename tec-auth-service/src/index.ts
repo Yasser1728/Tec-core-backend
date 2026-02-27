@@ -8,6 +8,7 @@ import kycRoutes from './routes/kyc.routes';
 import securityRoutes from './routes/security.routes';
 import profileRoutes from './routes/profile.routes';
 import { rateLimitMiddleware } from './middlewares/rate-limit.middleware';
+import { validateInternalKey } from './middleware/internal-auth';
 import { requestIdMiddleware } from './middleware/request-id';
 import { metricsMiddleware } from './middleware/metrics';
 import { register } from './infra/metrics';
@@ -28,13 +29,17 @@ const serviceStartTime = Date.now();
 // Security middleware
 app.use(helmet());
 
-// CORS — ALLOWED_ORIGINS (comma-separated) takes priority; falls back to CORS_ORIGIN (single value)
-const allowedOrigins = process.env.ALLOWED_ORIGINS;
-const corsOrigin: string | string[] = allowedOrigins
-  ? allowedOrigins.split(',').map((o) => o.trim())
-  : (process.env.CORS_ORIGIN || '*');
+// CORS — ALLOWED_ORIGINS (comma-separated) takes priority; falls back to CORS_ORIGIN.
+// Default is false (deny all cross-origin requests) when neither is set.
+const parseCorsOrigins = (): string | string[] | false => {
+  const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
+  if (!raw) return false;
+  if (raw === '*') return '*';
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return origins.length > 0 ? origins : false;
+};
 app.use(cors({
-  origin: corsOrigin,
+  origin: parseCorsOrigins(),
   credentials: true,
   // Explicitly list allowed methods so CORS preflight (OPTIONS) is handled correctly
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -76,7 +81,8 @@ app.get('/metrics', async (_req, res) => {
   res.end(await register.metrics());
 });
 
-// Routes — rate limiter applied to /auth endpoints
+// Routes — internal-key validation applied to all routes; rate limiter applied to /auth endpoints
+app.use(validateInternalKey);
 app.use('/auth', rateLimitMiddleware, authRoutes);
 app.use('/subscriptions', subscriptionRoutes);
 app.use('/kyc', kycRoutes);

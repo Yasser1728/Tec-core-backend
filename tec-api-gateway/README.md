@@ -20,16 +20,36 @@ API Gateway  (PORT 3000)
 |---|---|---|---|
 | `PORT` | No | `3000` | Port the gateway listens on (Railway sets this automatically) |
 | `NODE_ENV` | No | `development` | Set to `production` on Railway |
-| `AUTH_SERVICE_URL` | Yes | `http://localhost:5001` | Full URL of the Auth Service |
-| `WALLET_SERVICE_URL` | Yes | `http://localhost:5002` | Full URL of the Wallet Service |
-| `PAYMENT_SERVICE_URL` | Yes | `http://localhost:5003` | Full URL of the Payment Service |
-| `CORS_ORIGIN` | No | `*` | Allowed CORS origin (set to your frontend URL) |
+| `AUTH_SERVICE_URL` | Yes | `http://localhost:5001` | URL of the Auth Service (use Railway internal DNS in production) |
+| `WALLET_SERVICE_URL` | Yes | `http://localhost:5002` | URL of the Wallet Service (use Railway internal DNS in production) |
+| `PAYMENT_SERVICE_URL` | Yes | `http://localhost:5003` | URL of the Payment Service (use Railway internal DNS in production) |
+| `INTERNAL_SECRET` | Yes (prod) | _(none)_ | Shared secret injected as `x-internal-key` on all proxied requests; downstream services reject calls that omit or mismatch it |
+| `ALLOWED_ORIGINS` | No | _(none/deny)_ | Comma-separated list of allowed CORS origins; supports wildcard sub-domains like `https://*.vercel.app` |
 | `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate-limit window in milliseconds (15 min) |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Max requests per window per IP |
 | `LOG_LEVEL` | No | `info` | Log level (`error`, `warn`, `info`, `debug`) |
 | `SERVICE_VERSION` | No | `1.0.0` | Version shown in `/health` response |
 
 Copy `.env.example` to `.env` and fill in values before running locally.
+
+## Internal Auth
+
+The gateway injects the `x-internal-key: <INTERNAL_SECRET>` header on every proxied request. Downstream services validate this header and reject requests that do not supply the correct secret with an HTTP 403 response. This ensures that only requests routed through the gateway reach your backend services.
+
+Generate a strong secret:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Set the **same value** for `INTERNAL_SECRET` in the gateway and in each downstream service (`tec-auth-service`, `tec-wallet-service`, `tec-payment-service`).
+
+## CORS
+
+The gateway enforces an allowlist-based CORS policy. Set `ALLOWED_ORIGINS` to a comma-separated list of trusted browser origins. Wildcard sub-domain patterns such as `https://*.vercel.app` are supported for Vercel preview deployments. When `ALLOWED_ORIGINS` is empty (the default) all cross-origin browser requests are denied.
+
+```
+ALLOWED_ORIGINS=https://tec-app.vercel.app,https://*.vercel.app
+```
 
 ## Railway Deployment
 

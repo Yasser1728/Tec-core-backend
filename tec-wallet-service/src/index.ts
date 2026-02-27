@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import walletRoutes from './routes/wallet.routes';
 import { logger } from './utils/logger';
+import { validateInternalKey } from './middleware/internal-auth';
 import { requestIdMiddleware } from './middleware/request-id';
 import { metricsMiddleware } from './middleware/metrics';
 import { register } from './infra/metrics';
@@ -42,11 +43,13 @@ app.use(
 );
 
 // ─── CORS: allow only origins listed in ALLOWED_ORIGINS (or CORS_ORIGIN) env ──
-const parseCorsOrigins = (): string[] | string => {
+const parseCorsOrigins = (): string[] | string | false => {
   // ALLOWED_ORIGINS is the preferred env var; CORS_ORIGIN is kept for backwards compat.
   const raw = process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
-  if (!raw || raw === '*') return '*';
-  return raw.split(',').map((o) => o.trim()).filter(Boolean);
+  if (!raw) return false;
+  if (raw === '*') return '*';
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return origins.length > 0 ? origins : false;
 };
 
 const allowedOrigins = parseCorsOrigins();
@@ -92,7 +95,7 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // Routes
-app.use('/wallets', walletRoutes);
+app.use(validateInternalKey);
 app.use('/api/wallets', walletRoutes);
 
 // 404 handler

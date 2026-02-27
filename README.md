@@ -44,17 +44,19 @@ Each service is deployed as a separate Railway **Service** within the same proje
 2. For each of the four services, click **Add Service → GitHub Repo** and select this repository. Set the **Root Directory** to the service's folder (e.g. `tec-api-gateway`).
 3. Attach a **PostgreSQL** plugin to the project. Railway will inject `DATABASE_URL` into services that need it automatically.
 4. Configure the environment variables listed in each service's `.env.example` file via the Railway dashboard.
-5. Set the `AUTH_SERVICE_URL`, `WALLET_SERVICE_URL`, and `PAYMENT_SERVICE_URL` variables in the API Gateway to the public URLs of the corresponding Railway services.
+5. **Internal DNS:** Set `AUTH_SERVICE_URL`, `WALLET_SERVICE_URL`, and `PAYMENT_SERVICE_URL` in the API Gateway to the Railway internal DNS addresses (e.g. `http://auth-service.railway.internal:5001`) so traffic stays on Railway's private network.
+6. **Internal secret:** Generate a strong secret and set `INTERNAL_SECRET` to the same value in the Gateway and all three downstream services. This prevents direct access to downstream services that bypass the Gateway.
 
 ### Recommended environment variables per service
 
 #### API Gateway
 ```env
 NODE_ENV=production
-AUTH_SERVICE_URL=https://<auth-service>.up.railway.app
-WALLET_SERVICE_URL=https://<wallet-service>.up.railway.app
-PAYMENT_SERVICE_URL=https://<payment-service>.up.railway.app
-CORS_ORIGIN=*
+AUTH_SERVICE_URL=http://auth-service.railway.internal:5001
+WALLET_SERVICE_URL=http://wallet-service.railway.internal:5002
+PAYMENT_SERVICE_URL=http://payment-service.railway.internal:5003
+INTERNAL_SECRET=<strong-random-hex — must match the value set in each downstream service>
+ALLOWED_ORIGINS=https://tec-app.vercel.app,https://*.vercel.app
 ```
 
 #### Auth Service
@@ -62,13 +64,15 @@ CORS_ORIGIN=*
 NODE_ENV=production
 JWT_SECRET=<generate with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
 JWT_REFRESH_SECRET=<different strong random string>
-CORS_ORIGIN=https://tec-core-backend-pi.up.railway.app
+INTERNAL_SECRET=<same value as gateway>
+ALLOWED_ORIGINS=
 ```
 
 #### Wallet Service
 ```env
 NODE_ENV=production
-CORS_ORIGIN=https://tec-core-backend-pi.up.railway.app
+INTERNAL_SECRET=<same value as gateway>
+ALLOWED_ORIGINS=
 ```
 
 #### Payment Service
@@ -78,7 +82,8 @@ JWT_SECRET=<same value as auth-service>
 PI_API_KEY=<from https://developers.minepi.com>
 PI_APP_ID=<from https://developers.minepi.com>
 PI_SANDBOX=true
-CORS_ORIGIN=https://tec-core-backend-pi.up.railway.app
+INTERNAL_SECRET=<same value as gateway>
+ALLOWED_ORIGINS=
 ```
 
 > **Tip:** Railway automatically injects the `PORT` variable. Never hard-code a port number.
@@ -123,5 +128,7 @@ The **Railway Deployment** check will appear alongside the CI and other checks i
 - **No Vercel dependency:** `vercel.json` exists for historical reference but the primary deployment target is Railway. All services now always start their HTTP server regardless of `NODE_ENV`.
 - **Dockerfiles are self-contained:** each service's `Dockerfile` uses its own directory as the build context, compatible with Railway's per-service build.
 - **Health checks:** every service exposes `GET /health` returning `{ status, service, uptime, version }`. The API Gateway aggregates health from all downstream services.
-- **CORS:** defaults to `*` (open). In production, set `CORS_ORIGIN` to your exact frontend domain.
+- **Internal auth (`INTERNAL_SECRET`):** the Gateway injects an `x-internal-key` header (value: `INTERNAL_SECRET`) on every proxied request. Each downstream service (auth/wallet/payment) validates this header and rejects requests with 403 when the secret is configured but missing or wrong. This prevents direct access to downstream services by anyone who has not gone through the Gateway. Generate a strong secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and set the same value in all four services.
+- **CORS:** defaults to *deny all cross-origin requests* (empty `ALLOWED_ORIGINS`). In production, set `ALLOWED_ORIGINS` on the Gateway to your frontend domain and desired preview patterns (e.g. `https://tec-app.vercel.app,https://*.vercel.app`). Downstream services should keep `ALLOWED_ORIGINS` empty because all legitimate browser traffic arrives via the Gateway.
+- **Internal DNS:** in production (Railway) prefer `http://<service>.railway.internal:<port>` as service URLs in the Gateway so traffic stays on Railway's private network and is not charged as egress.
 - **Rate limiting:** applied at the gateway level (100 req / 15 min per IP by default).

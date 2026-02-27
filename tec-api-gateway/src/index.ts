@@ -42,9 +42,45 @@ interface HealthResponse {
 }
 
 app.use(helmet());
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// ALLOWED_ORIGINS (comma-separated) is the primary env var.  Each entry may
+// be an exact origin string or a pattern ending with "*.vercel.app" which is
+// converted to a RegExp to match Vercel preview deployments.
+// Defaults to false (deny all cross-origin requests) when the variable is unset.
+const buildCorsOrigin = (): cors.CorsOptions['origin'] => {
+  const raw = env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '';
+  if (!raw) return false;
+
+  const entries = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  if (entries.length === 0) return false;
+
+  // Convert wildcard patterns like "https://*.vercel.app" to RegExp.
+  const matchers: Array<string | RegExp> = entries.map((entry) => {
+    if (entry.includes('*')) {
+      const escaped = entry.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '[^.]+');
+      return new RegExp(`^${escaped}$`);
+    }
+    return entry;
+  });
+
+  return (origin, callback) => {
+    // Allow same-origin / non-browser (no Origin header) requests.
+    if (!origin) return callback(null, true);
+    const allowed = matchers.some((m) =>
+      typeof m === 'string' ? m === origin : m.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  };
+};
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: buildCorsOrigin(),
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // ─── Observability middleware (before routes) ─────────────────────────────────
