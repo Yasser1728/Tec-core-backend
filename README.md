@@ -123,6 +123,31 @@ Automatically deploys to Railway on every push to `main`/`master` using the offi
 
 The **Railway Deployment** check will appear alongside the CI and other checks in every pull request and push.
 
+## Pi Sandbox Setup
+
+The Payment Service is pre-configured for the Pi Network sandbox environment.
+
+| Setting | Value |
+|---|---|
+| Pi App ID | `tec-app-de161fa2243c797b` |
+| Pi Sandbox App URL | https://sandbox.minepi.com/app/tec-app-de161fa2243c797b |
+
+**Allowed domains (Pi Developer Portal):**
+- `https://tec-app.vercel.app`
+- `https://sandbox.minepi.com/app/tec-app-de161fa2243c797b`
+- `https://api-gateway-production-6a68.up.railway.app`
+
+**Required env keys in `tec-payment-service`:**
+
+```env
+PI_APP_ID=tec-app-de161fa2243c797b
+PI_SANDBOX=true
+PI_API_KEY=          # obtain from https://developers.minepi.com — never commit real key
+PI_TEST_WALLET=GCVMCQN56ZZGSA6KKT3S6INXHEWPK4CTGWU7AGCEHP5KWSHDL4SJY7CI
+```
+
+> **Note:** `PI_API_KEY` is a secret — set it in Railway (or your `.env`) only; do not commit a real value.
+
 ## Engineering Notes
 
 - **No Vercel dependency:** `vercel.json` exists for historical reference but the primary deployment target is Railway. All services now always start their HTTP server regardless of `NODE_ENV`.
