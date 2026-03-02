@@ -59,19 +59,21 @@ All routes are also available under the `/api` prefix (e.g., `/api/wallets`).
 
 ## Testing the Service
 
+> **Note:** In production, all requests must go through the API Gateway (`https://api-gateway-production-6a68.up.railway.app`). Direct service URLs are internal only.
+
 ### Health check
 ```bash
-curl https://wallet-service-production-445d.up.railway.app/health
+curl https://api-gateway-production-6a68.up.railway.app/health
 ```
 
 ### Get wallets for a user
 ```bash
-curl "https://wallet-service-production-445d.up.railway.app/wallets?userId=550e8400-e29b-41d4-a716-446655440000"
+curl "https://api-gateway-production-6a68.up.railway.app/api/wallets?userId=550e8400-e29b-41d4-a716-446655440000"
 ```
 
 ### Link a wallet
 ```bash
-curl -X POST https://wallet-service-production-445d.up.railway.app/wallets/link \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/wallets/link \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "550e8400-e29b-41d4-a716-446655440000",
@@ -82,12 +84,12 @@ curl -X POST https://wallet-service-production-445d.up.railway.app/wallets/link 
 
 ### Get wallet balance
 ```bash
-curl https://wallet-service-production-445d.up.railway.app/wallets/<wallet-uuid>/balance
+curl https://api-gateway-production-6a68.up.railway.app/api/wallets/<wallet-uuid>/balance
 ```
 
 ### Get wallet transactions (paginated)
 ```bash
-curl "https://wallet-service-production-445d.up.railway.app/wallets/<wallet-uuid>/transactions?page=1&limit=20&status=completed"
+curl "https://api-gateway-production-6a68.up.railway.app/api/wallets/<wallet-uuid>/transactions?page=1&limit=20&status=completed"
 ```
 
 ## Local Development

@@ -83,21 +83,23 @@ All routes are also available under the `/api` prefix (e.g., `/api/auth/register
 
 ## Testing the Service
 
+> **Note:** In production, all requests must go through the API Gateway (`https://api-gateway-production-6a68.up.railway.app`). Direct service URLs are internal only.
+
 ### Health check
 ```bash
-curl https://auth-service-pi.up.railway.app/health
+curl https://api-gateway-production-6a68.up.railway.app/health
 ```
 
 ### Register a new user
 ```bash
-curl -X POST https://auth-service-pi.up.railway.app/auth/register \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","username":"myuser","password":"StrongPass1!"}'
 ```
 
 ### Login
 ```bash
-curl -X POST https://auth-service-pi.up.railway.app/auth/login \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"StrongPass1!"}'
 ```

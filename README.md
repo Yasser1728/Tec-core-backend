@@ -150,7 +150,7 @@ PI_TEST_WALLET=GCVMCQN56ZZGSA6KKT3S6INXHEWPK4CTGWU7AGCEHP5KWSHDL4SJY7CI
 
 ## Engineering Notes
 
-- **No Vercel dependency:** `vercel.json` exists for historical reference but the primary deployment target is Railway. All services now always start their HTTP server regardless of `NODE_ENV`.
+- **No Vercel dependency:** `vercel.json` has been removed; the primary deployment target is Railway. All services now always start their HTTP server regardless of `NODE_ENV`.
 - **Dockerfiles are self-contained:** each service's `Dockerfile` uses its own directory as the build context, compatible with Railway's per-service build.
 - **Health checks:** every service exposes `GET /health` returning `{ status, service, uptime, version }`. The API Gateway aggregates health from all downstream services.
 - **Internal auth (`INTERNAL_SECRET`):** the Gateway injects an `x-internal-key` header (value: `INTERNAL_SECRET`) on every proxied request. Each downstream service (auth/wallet/payment) validates this header and rejects requests with 403 when the secret is configured but missing or wrong. This prevents direct access to downstream services by anyone who has not gone through the Gateway. Generate a strong secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and set the same value in all four services.
