@@ -54,14 +54,16 @@ create → approve → complete
 
 ## Testing the Service
 
+> **Note:** In production, all requests must go through the API Gateway (`https://api-gateway-production-6a68.up.railway.app`). Direct service URLs are internal only.
+
 ### Health check
 ```bash
-curl https://payment-service-production-90e5.up.railway.app/health
+curl https://api-gateway-production-6a68.up.railway.app/health
 ```
 
 ### Create a payment
 ```bash
-curl -X POST https://payment-service-production-90e5.up.railway.app/payments/create \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/payments/create \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "550e8400-e29b-41d4-a716-446655440000",
@@ -73,21 +75,21 @@ curl -X POST https://payment-service-production-90e5.up.railway.app/payments/cre
 
 ### Approve a payment
 ```bash
-curl -X POST https://payment-service-production-90e5.up.railway.app/payments/approve \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/payments/approve \
   -H "Content-Type: application/json" \
   -d '{"payment_id": "<uuid>", "pi_payment_id": "<pi-txn-id>"}'
 ```
 
 ### Complete a payment
 ```bash
-curl -X POST https://payment-service-production-90e5.up.railway.app/payments/complete \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/payments/complete \
   -H "Content-Type: application/json" \
   -d '{"payment_id": "<uuid>", "transaction_id": "<txn-id>"}'
 ```
 
 ### Get payment status
 ```bash
-curl https://payment-service-production-90e5.up.railway.app/payments/<uuid>/status
+curl https://api-gateway-production-6a68.up.railway.app/api/payments/<uuid>/status
 ```
 
 ## Local Development
