@@ -202,6 +202,16 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
     }
 
     // Verify current password
+    if (!user.password_hash) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'PASSWORD_NOT_SUPPORTED',
+          message: 'Password change is not available for Pi Network accounts',
+        },
+      });
+      return;
+    }
     const isPasswordValid = await comparePassword(currentPassword, user.password_hash);
     if (!isPasswordValid) {
       res.status(401).json({

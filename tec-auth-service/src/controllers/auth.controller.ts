@@ -138,6 +138,16 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Verify password
+    if (!user.password_hash) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code: 'AUTHENTICATION_ERROR',
+          message: 'Invalid email or password',
+        },
+      });
+      return;
+    }
     const isValidPassword = await comparePassword(password, user.password_hash);
     if (!isValidPassword) {
       res.status(401).json({

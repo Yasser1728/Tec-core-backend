@@ -8,6 +8,8 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1),
   // Internal service-to-service auth secret
   INTERNAL_SECRET: z.string().min(1).optional(),
+  // Pi Network
+  PI_SANDBOX: z.string().optional(),
   // Observability (all optional — safe defaults applied in infra/logger.ts etc.)
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
   SERVICE_NAME: z.string().optional(),
