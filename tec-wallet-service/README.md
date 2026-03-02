@@ -61,17 +61,17 @@ All routes are also available under the `/api` prefix (e.g., `/api/wallets`).
 
 ### Health check
 ```bash
-curl https://<wallet-service>.up.railway.app/health
+curl https://wallet-service-production-445d.up.railway.app/health
 ```
 
 ### Get wallets for a user
 ```bash
-curl "https://<wallet-service>.up.railway.app/wallets?userId=550e8400-e29b-41d4-a716-446655440000"
+curl "https://wallet-service-production-445d.up.railway.app/wallets?userId=550e8400-e29b-41d4-a716-446655440000"
 ```
 
 ### Link a wallet
 ```bash
-curl -X POST https://<wallet-service>.up.railway.app/wallets/link \
+curl -X POST https://wallet-service-production-445d.up.railway.app/wallets/link \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "550e8400-e29b-41d4-a716-446655440000",
@@ -82,12 +82,12 @@ curl -X POST https://<wallet-service>.up.railway.app/wallets/link \
 
 ### Get wallet balance
 ```bash
-curl https://<wallet-service>.up.railway.app/wallets/<wallet-uuid>/balance
+curl https://wallet-service-production-445d.up.railway.app/wallets/<wallet-uuid>/balance
 ```
 
 ### Get wallet transactions (paginated)
 ```bash
-curl "https://<wallet-service>.up.railway.app/wallets/<wallet-uuid>/transactions?page=1&limit=20&status=completed"
+curl "https://wallet-service-production-445d.up.railway.app/wallets/<wallet-uuid>/transactions?page=1&limit=20&status=completed"
 ```
 
 ## Local Development

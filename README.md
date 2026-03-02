@@ -12,17 +12,17 @@ Monorepo for the TEC platform backend — four independent Node.js/TypeScript mi
 ## Live Base URL
 
 ```
-https://tec-core-backend-pi.up.railway.app
+https://api-gateway-production-6a68.up.railway.app
 ```
 
 All requests pass through the API Gateway. Example:
 
 ```bash
 # Health check
-curl https://tec-core-backend-pi.up.railway.app/health
+curl https://api-gateway-production-6a68.up.railway.app/health
 
 # Register a user (proxied to auth-service)
-curl -X POST https://tec-core-backend-pi.up.railway.app/api/auth/register \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","username":"myuser","password":"StrongPass1!"}'
 ```
