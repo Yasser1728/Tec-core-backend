@@ -96,7 +96,7 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
     logAudit('PI_LOGIN', { userId: user.id, piUid: verifiedUid, isNewUser, ipAddress: req.ip });
 
     // Step 5: Return response (omit password_hash)
-    const { password_hash, ...userWithoutPassword } = user;
+    const { password_hash: _password_hash, ...userWithoutPassword } = user;
 
     res.status(isNewUser ? 201 : 200).json({
       success: true,
