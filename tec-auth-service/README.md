@@ -85,19 +85,19 @@ All routes are also available under the `/api` prefix (e.g., `/api/auth/register
 
 ### Health check
 ```bash
-curl https://<auth-service>.up.railway.app/health
+curl https://auth-service-pi.up.railway.app/health
 ```
 
 ### Register a new user
 ```bash
-curl -X POST https://<auth-service>.up.railway.app/auth/register \
+curl -X POST https://auth-service-pi.up.railway.app/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","username":"myuser","password":"StrongPass1!"}'
 ```
 
 ### Login
 ```bash
-curl -X POST https://<auth-service>.up.railway.app/auth/login \
+curl -X POST https://auth-service-pi.up.railway.app/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"StrongPass1!"}'
 ```

@@ -56,12 +56,12 @@ create → approve → complete
 
 ### Health check
 ```bash
-curl https://<payment-service>.up.railway.app/health
+curl https://payment-service-production-90e5.up.railway.app/health
 ```
 
 ### Create a payment
 ```bash
-curl -X POST https://<payment-service>.up.railway.app/payments/create \
+curl -X POST https://payment-service-production-90e5.up.railway.app/payments/create \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "550e8400-e29b-41d4-a716-446655440000",
@@ -73,21 +73,21 @@ curl -X POST https://<payment-service>.up.railway.app/payments/create \
 
 ### Approve a payment
 ```bash
-curl -X POST https://<payment-service>.up.railway.app/payments/approve \
+curl -X POST https://payment-service-production-90e5.up.railway.app/payments/approve \
   -H "Content-Type: application/json" \
   -d '{"payment_id": "<uuid>", "pi_payment_id": "<pi-txn-id>"}'
 ```
 
 ### Complete a payment
 ```bash
-curl -X POST https://<payment-service>.up.railway.app/payments/complete \
+curl -X POST https://payment-service-production-90e5.up.railway.app/payments/complete \
   -H "Content-Type: application/json" \
   -d '{"payment_id": "<uuid>", "transaction_id": "<txn-id>"}'
 ```
 
 ### Get payment status
 ```bash
-curl https://<payment-service>.up.railway.app/payments/<uuid>/status
+curl https://payment-service-production-90e5.up.railway.app/payments/<uuid>/status
 ```
 
 ## Local Development

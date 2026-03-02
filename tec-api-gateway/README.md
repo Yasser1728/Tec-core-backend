@@ -73,7 +73,7 @@ ALLOWED_ORIGINS=https://tec-app.vercel.app,https://*.vercel.app
 
 ### Health check
 ```bash
-curl https://tec-core-backend-pi.up.railway.app/health
+curl https://api-gateway-production-6a68.up.railway.app/health
 ```
 
 Expected response:
@@ -96,7 +96,7 @@ If any downstream service is unreachable, the top-level `status` becomes `"degra
 
 ### Proxy a request through the gateway
 ```bash
-curl -X POST https://tec-core-backend-pi.up.railway.app/api/auth/register \
+curl -X POST https://api-gateway-production-6a68.up.railway.app/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","username":"testuser","password":"securepassword"}'
 ```
