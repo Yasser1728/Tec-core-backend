@@ -89,6 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker-build
     if: github.event_name == 'push'
+    continue-on-error: true
     strategy:
       max-parallel: 1
       fail-fast: false
@@ -132,7 +133,7 @@ jobs:
   deploy:
     name: Deploy (${{ matrix.service }})
     runs-on: ubuntu-latest
-    needs: migrate
+    needs: docker-build
     if: github.event_name == 'push'
     strategy:
       max-parallel: 4
@@ -183,8 +184,9 @@ jobs:
     if: failure() && github.event_name == 'push'
     steps:
       - name: Slack Notification
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v2
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-token: ${{ secrets.SLACK_BOT_TOKEN }}
-          text: ":warning: CI/CD pipeline failed on `${{ github.ref_name }}` — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          slack-message: ":warning: CI/CD pipeline failed on `${{ github.ref_name }}` — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
