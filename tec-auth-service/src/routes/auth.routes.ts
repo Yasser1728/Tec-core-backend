@@ -7,6 +7,7 @@ import {
   refresh,
   getMe,
 } from '../controllers/auth.controller';
+import { piLogin } from '../controllers/pi-auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -44,5 +45,8 @@ router.post(
 
 // GET /auth/me - Get current user
 router.get('/me', authenticate, getMe);
+
+// POST /auth/pi-login - Login or register via Pi Network
+router.post('/pi-login', [body('accessToken').notEmpty()], piLogin);
 
 export default router;

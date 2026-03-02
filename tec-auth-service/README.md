@@ -14,6 +14,7 @@ Handles user registration, authentication, session management, KYC verification,
 | `JWT_EXPIRES_IN` | No | `1h` | Access token lifetime (e.g. `15m`, `1h`, `24h`) |
 | `JWT_REFRESH_EXPIRES_IN` | No | `7d` | Refresh token lifetime |
 | `CORS_ORIGIN` | No | `*` | Allowed CORS origin. Set to your gateway or frontend URL. |
+| `PI_SANDBOX` | No | `true` | Set to `false` to use the Pi Network mainnet API instead of sandbox |
 | `LOG_LEVEL` | No | `info` | Log level (`error`, `warn`, `info`, `debug`) |
 | `SERVICE_VERSION` | No | `1.0.0` | Version shown in `/health` response |
 
@@ -40,6 +41,7 @@ All routes are also available under the `/api` prefix (e.g., `/api/auth/register
 | `POST` | `/auth/logout` | Yes | Invalidate current session |
 | `POST` | `/auth/refresh` | No | Refresh access token using refresh token |
 | `GET` | `/auth/me` | Yes | Get current authenticated user |
+| `POST` | `/auth/pi-login` | No | Login or register via Pi Network access token |
 
 ### Subscriptions (`/subscriptions`)
 

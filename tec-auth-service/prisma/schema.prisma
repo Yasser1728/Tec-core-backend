@@ -16,9 +16,11 @@ datasource db {
 
 model User {
   id            String          @id @default(uuid())
-  email         String          @unique
+  email         String?         @unique
   username      String          @unique
-  password_hash String
+  password_hash String?
+  pi_uid        String?         @unique
+  pi_username   String?
   kyc_status    String          @default("pending")
   role          String          @default("user")
   created_at    DateTime        @default(now())
