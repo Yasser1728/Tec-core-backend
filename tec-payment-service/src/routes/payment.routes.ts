@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import {
   createPayment,
   approvePayment,
@@ -7,6 +7,8 @@ import {
   cancelPayment,
   failPayment,
   getPaymentStatus,
+  getPaymentHistory,
+  triggerReconciliation,
 } from '../controllers/payment.controller';
 import { handleIncompletePayment } from '../controllers/webhook.controller';
 import {
@@ -18,6 +20,7 @@ import {
 } from '../middlewares/rate-limit.middleware';
 import { idempotency } from '../middlewares/idempotency.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
+import { validateInternalKey } from '../middleware/internal-auth';
 
 const router = Router();
 
@@ -118,6 +121,49 @@ router.post(
       .trim(),
   ],
   failPayment
+);
+
+// GET /payments/history - Get payment history for authenticated user
+router.get(
+  '/history',
+  authenticate,
+  statusRateLimiter,
+  [
+    query('page')
+      .optional()
+      .isInt({ min: 1 }).withMessage('page must be an integer >= 1')
+      .toInt(),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 100 }).withMessage('limit must be an integer between 1 and 100')
+      .toInt(),
+    query('status')
+      .optional()
+      .isIn(['created', 'approved', 'completed', 'cancelled', 'failed'])
+      .withMessage('status must be one of: created, approved, completed, cancelled, failed'),
+    query('payment_method')
+      .optional()
+      .isIn(['pi', 'card', 'wallet'])
+      .withMessage('payment_method must be one of: pi, card, wallet'),
+    query('from')
+      .optional()
+      .isISO8601().withMessage('from must be a valid ISO date string'),
+    query('to')
+      .optional()
+      .isISO8601().withMessage('to must be a valid ISO date string'),
+    query('sort')
+      .optional()
+      .isIn(['asc', 'desc']).withMessage('sort must be asc or desc'),
+  ],
+  getPaymentHistory
+);
+
+// POST /payments/reconcile - Trigger stale payment reconciliation (internal)
+router.post(
+  '/reconcile',
+  validateInternalKey,
+  paymentRateLimiter,
+  triggerReconciliation
 );
 
 // GET /payments/:id/status - Get payment status

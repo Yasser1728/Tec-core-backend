@@ -858,3 +858,137 @@ export const failPayment = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+// Get payment history for authenticated user
+export const getPaymentHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logWarn('GetPaymentHistory validation failed', { errors: errors.array(), query: req.query });
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid query parameters.',
+          details: errors.array().map((err: ValidationError) => ({
+            field: 'path' in err ? err.path : 'unknown',
+            message: err.msg,
+            value: 'value' in err ? err.value : undefined,
+          })),
+        },
+      });
+      return;
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      });
+      return;
+    }
+
+    const page = parseInt(req.query.page as string ?? '1', 10) || 1;
+    const limit = parseInt(req.query.limit as string ?? '20', 10) || 20;
+    const status = req.query.status as string | undefined;
+    const payment_method = req.query.payment_method as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    const sort = (req.query.sort as string ?? 'desc') === 'asc' ? 'asc' : 'desc';
+
+    const where: Record<string, unknown> = { user_id: userId };
+    if (status) where['status'] = status;
+    if (payment_method) where['payment_method'] = payment_method;
+    if (from || to) {
+      where['created_at'] = {
+        ...(from ? { gte: new Date(from) } : {}),
+        ...(to ? { lte: new Date(to) } : {}),
+      };
+    }
+
+    logInfo('Fetching payment history', { userId, page, limit, status, payment_method, sort, requestId: req.requestId });
+
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        orderBy: { created_at: sort },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          amount: true,
+          currency: true,
+          payment_method: true,
+          status: true,
+          pi_payment_id: true,
+          created_at: true,
+          updated_at: true,
+          approved_at: true,
+          completed_at: true,
+          failed_at: true,
+          cancelled_at: true,
+        },
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      success: true,
+      data: {
+        payments,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    logError('GetPaymentHistory error', { error: (error as Error).message });
+
+    if (error instanceof PrismaClientInitializationError ||
+        error instanceof PrismaClientRustPanicError) {
+      res.status(503).json({
+        success: false,
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database connection failed. Please check DATABASE_URL configuration.',
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve payment history',
+      },
+    });
+  }
+};
+
+// Trigger stale payment reconciliation (internal/admin)
+export const triggerReconciliation = async (req: Request, res: Response): Promise<void> => {
+  try {
+    logInfo('Reconciliation triggered', { requestId: req.requestId });
+    const { reconcileStalePayments } = await import('../services/reconciliation.service');
+    const result = await reconcileStalePayments();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logError('Reconciliation error', { error: (error as Error).message });
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Reconciliation failed',
+      },
+    });
+  }
+};
+

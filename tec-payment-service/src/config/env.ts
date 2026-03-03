@@ -12,6 +12,9 @@ const envSchema = z.object({
   // Pi API request timeouts in milliseconds (default: 30 000)
   PI_API_APPROVE_TIMEOUT: z.coerce.number().positive().default(30000),
   PI_API_COMPLETE_TIMEOUT: z.coerce.number().positive().default(30000),
+  // Stale payment reconciliation thresholds in milliseconds
+  RECONCILE_CREATED_THRESHOLD_MS: z.coerce.number().positive().default(1800000),
+  RECONCILE_APPROVED_THRESHOLD_MS: z.coerce.number().positive().default(3600000),
   // Internal service-to-service auth secret
   INTERNAL_SECRET: z.string().min(1).optional(),
   // Observability (all optional — safe defaults applied in infra/logger.ts etc.)

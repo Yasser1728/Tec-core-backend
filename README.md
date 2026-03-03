@@ -146,7 +146,9 @@ https://api-gateway-production-6a68.up.railway.app
 | `POST` | `/api/payments/complete` | Yes | Complete/confirm a payment |
 | `POST` | `/api/payments/cancel` | Yes | Cancel a payment |
 | `POST` | `/api/payments/fail` | Yes | Record payment failure |
+| `GET` | `/api/payments/history` | Yes | Get paginated payment history |
 | `GET` | `/api/payments/:id/status` | Yes | Get payment status |
+| `POST` | `/api/payments/reconcile` | Internal key | Trigger stale payment reconciliation |
 
 ## Quick Start (Local Development)
 

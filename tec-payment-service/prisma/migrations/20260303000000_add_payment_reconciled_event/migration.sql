@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "AuditEventType" ADD VALUE 'PAYMENT_RECONCILED';

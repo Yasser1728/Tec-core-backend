@@ -9,7 +9,8 @@ export type AuditEventType =
   | 'PAYMENT_CANCELLED'
   | 'PAYMENT_FAILED'
   | 'INVALID_TRANSITION_ATTEMPT'
-  | 'PAYMENT_WEBHOOK_RECEIVED';
+  | 'PAYMENT_WEBHOOK_RECEIVED'
+  | 'PAYMENT_RECONCILED';
 
 export interface AuditLogData {
   userId: string;
