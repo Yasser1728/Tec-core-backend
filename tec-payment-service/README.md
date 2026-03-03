@@ -43,7 +43,9 @@ All routes are also available under the `/api` prefix (e.g., `/api/payments/crea
 | `POST` | `/payments/complete` | Complete an approved payment (final stage) |
 | `POST` | `/payments/cancel` | Cancel a payment |
 | `POST` | `/payments/fail` | Record a payment failure |
+| `GET` | `/payments/history` | Get paginated payment history for authenticated user |
 | `GET` | `/payments/:id/status` | Get the status of a payment |
+| `POST` | `/payments/reconcile` | Trigger stale payment reconciliation (internal, requires `x-internal-key`) |
 
 ### Payment Lifecycle
 
