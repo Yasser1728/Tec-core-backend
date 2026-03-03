@@ -1,4 +1,4 @@
-## TEC Wallet Service
+# TEC Wallet Service
 
 Manages user wallets: linking new wallets, retrieving balances, and querying paginated transaction history. Supports Pi, crypto, and fiat wallet types.
 
