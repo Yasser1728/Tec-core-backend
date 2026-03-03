@@ -1,4 +1,4 @@
-## TEC Payment Service
+# TEC Payment Service
 
 Manages payment lifecycle: creation, approval, completion, cancellation, and failure recording. Supports Pi Network payments, card, and wallet-based payments.
 
