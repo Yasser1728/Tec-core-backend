@@ -1,4 +1,4 @@
-## TEC Auth Service
+# TEC Auth Service
 
 Handles user registration, authentication, session management, KYC verification, security (2FA, devices, sessions), and user profiles.
 
