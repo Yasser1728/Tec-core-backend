@@ -1,4 +1,4 @@
-# TEC API Gateway
+## TEC API Gateway
 
 Central entry point for all TEC platform microservices. Receives all incoming HTTP requests and reverse-proxies them to the appropriate downstream service.
 
