@@ -54,6 +54,12 @@ router.use(
 );
 
 // Payment Service routes: /api/payments/*
+// Webhook sub-routes must NOT have the internal key injected — Pi Network
+// is the caller and must be authenticated by the payment service using PI_API_KEY.
+router.use(
+  '/payments/webhook',
+  createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL))
+);
 router.use(
   '/payments',
   injectInternalKey,

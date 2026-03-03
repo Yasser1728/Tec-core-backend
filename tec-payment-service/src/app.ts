@@ -125,7 +125,18 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use(validateInternalKey);
+// Webhook routes bypass the internal-key check because Pi Network is the caller
+// and does not possess the internal secret.  Auth is handled inside the webhook
+// controller using PI_API_KEY.  All other payment routes still require the key.
+const WEBHOOK_PATHS = new Set([
+  '/webhook/incomplete',
+  '/payments/webhook/incomplete',
+  '/api/payments/webhook/incomplete',
+]);
+app.use((req, _res, next) => {
+  if (WEBHOOK_PATHS.has(req.path)) return next();
+  return validateInternalKey(req, _res, next);
+});
 app.use('/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 

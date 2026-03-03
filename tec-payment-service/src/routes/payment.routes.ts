@@ -8,6 +8,7 @@ import {
   failPayment,
   getPaymentStatus,
 } from '../controllers/payment.controller';
+import { handleIncompletePayment } from '../controllers/webhook.controller';
 import {
   initiateRateLimiter,
   confirmRateLimiter,
@@ -19,6 +20,10 @@ import { idempotency } from '../middlewares/idempotency.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
 
 const router = Router();
+
+// POST /payments/webhook/incomplete — Pi Network incomplete-payment notification
+// No JWT or internal-key auth; validated via PI_API_KEY inside the controller.
+router.post('/webhook/incomplete', handleIncompletePayment);
 
 // POST /payments/create - Initiate a new payment
 router.post(
