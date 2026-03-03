@@ -69,7 +69,9 @@ router.post(
     body('pi_payment_id')
       .optional()
       .isString().withMessage('pi_payment_id must be a string')
-      .trim(),
+      .trim()
+      .matches(/^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$/)
+      .withMessage('pi_payment_id contains invalid characters'),
   ],
   approvePayment
 );
@@ -87,7 +89,9 @@ router.post(
     body('transaction_id')
       .optional()
       .isString().withMessage('transaction_id must be a string')
-      .trim(),
+      .trim()
+      .matches(/^[a-zA-Z0-9_-]{8,128}$/)
+      .withMessage('transaction_id must be 8-128 alphanumeric characters (hyphens and underscores allowed)'),
   ],
   completePayment
 );
