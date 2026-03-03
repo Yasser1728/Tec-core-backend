@@ -5,8 +5,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(1),
-  PI_API_KEY: z.string().min(1),
-  PI_APP_ID: z.string().min(1),
+  PI_API_KEY: z.string().default(''),
+  PI_APP_ID: z.string().default(''),
   // Pi Network environment: 'true' = Testnet/Sandbox (default), 'false' = Mainnet/Production
   PI_SANDBOX: z.string().default('true'),
   // Pi API request timeouts in milliseconds (default: 30 000)

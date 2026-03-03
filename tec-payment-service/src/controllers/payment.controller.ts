@@ -9,6 +9,7 @@ import {
 import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
 import { piApprovePayment, piCompletePayment, PiApiError } from '../services/payment.service';
+import { env } from '../config/env';
 
 // Helper function to safely get metadata as an object
 const getMetadataObject = (metadata: unknown): Record<string, unknown> => {
@@ -168,7 +169,18 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
     }
 
     const { payment_id, pi_payment_id } = req.body;
-    
+
+    if (pi_payment_id && (!env.PI_API_KEY || !env.PI_APP_ID)) {
+      res.status(503).json({
+        success: false,
+        error: {
+          code: 'SERVICE_NOT_CONFIGURED',
+          message: 'Pi Network credentials are not configured. Contact the administrator.',
+        },
+      });
+      return;
+    }
+
     logInfo('Approving payment', { payment_id, pi_payment_id, requestId: req.requestId });
 
     const payment = await prisma.payment.findUnique({
@@ -362,6 +374,16 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
+      if (!env.PI_API_KEY || !env.PI_APP_ID) {
+        res.status(503).json({
+          success: false,
+          error: {
+            code: 'SERVICE_NOT_CONFIGURED',
+            message: 'Pi Network credentials are not configured. Contact the administrator.',
+          },
+        });
+        return;
+      }
       try {
         await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
       } catch (piErr) {
