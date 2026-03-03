@@ -9,6 +9,38 @@ Monorepo for the TEC platform backend — four independent Node.js/TypeScript mi
 | Wallet Service | `tec-wallet-service` | 5002 | Wallet linking, balances, transaction history |
 | Payment Service | `tec-payment-service` | 5003 | Pi/card/wallet payment lifecycle |
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Client / Frontend                   │
+│              (React / Pi Browser / Mobile)               │
+└──────────────────────────┬──────────────────────────────┘
+                           │ HTTPS
+                           ▼
+┌──────────────────────────────────────────────────────────┐
+│                    API Gateway (:3000)                    │
+│  • CORS • Rate Limiting • Helmet • Request-ID • Metrics  │
+│  • Internal-Key injection • Health aggregation           │
+├────────────┬─────────────┬───────────────────────────────┤
+│ /api/auth  │ /api/wallets│ /api/payments                 │
+└─────┬──────┴──────┬──────┴──────────┬────────────────────┘
+      │             │                 │
+      ▼             ▼                 ▼
+┌───────────┐ ┌───────────┐ ┌──────────────┐
+│Auth (:5001)│ │Wallet     │ │Payment       │
+│            │ │  (:5002)  │ │  (:5003)     │
+│• Register  │ │• Wallets  │ │• Pi Payments │
+│• Login/JWT │ │• Accounts │ │• Lifecycle   │
+│• 2FA/KYC   │ │• Transfers│ │• Idempotency │
+│• Profiles  │ │• History  │ │• Audit Trail │
+│• Sessions  │ │• Audit    │ │              │
+└─────┬──────┘ └─────┬─────┘ └──────┬───────┘
+      │              │               │
+      ▼              ▼               ▼
+   [PostgreSQL]  [PostgreSQL]   [PostgreSQL]
+```
+
 ## Live Base URL
 
 ```
@@ -26,6 +58,116 @@ curl -X POST https://api-gateway-production-6a68.up.railway.app/api/auth/registe
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","username":"myuser","password":"StrongPass1!"}'
 ```
+
+## Complete API Reference
+
+All endpoints are accessed through the API Gateway at:
+```
+https://api-gateway-production-6a68.up.railway.app
+```
+
+### Gateway Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Aggregated health check (all services) |
+| `GET` | `/ready` | Readiness probe |
+| `GET` | `/metrics` | Prometheus metrics |
+
+### Auth Service (`/api/auth/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/register` | No | Register a new user |
+| `POST` | `/api/auth/login` | No | Login and receive tokens |
+| `POST` | `/api/auth/logout` | Yes | Invalidate current session |
+| `POST` | `/api/auth/refresh` | No | Refresh access token |
+| `GET` | `/api/auth/me` | Yes | Get current authenticated user |
+| `POST` | `/api/auth/pi-login` | No | Login/register via Pi Network |
+
+### Subscriptions (`/api/subscriptions/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/subscriptions/plans` | No | List subscription plans |
+| `GET` | `/api/subscriptions/status` | Yes | Current subscription status |
+| `POST` | `/api/subscriptions/subscribe` | Yes | Subscribe to a plan |
+| `POST` | `/api/subscriptions/cancel` | Yes | Cancel subscription |
+| `POST` | `/api/subscriptions/upgrade` | Yes | Upgrade plan |
+
+### KYC (`/api/kyc/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/kyc/status` | Yes | KYC verification status |
+| `POST` | `/api/kyc/submit` | Yes | Submit KYC data |
+| `POST` | `/api/kyc/verify` | Admin | Approve/reject KYC |
+
+### Security (`/api/security/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/security/2fa/status` | Yes | Get 2FA status |
+| `POST` | `/api/security/2fa/enable` | Yes | Enable 2FA |
+| `POST` | `/api/security/2fa/verify` | Yes | Verify 2FA code |
+| `POST` | `/api/security/2fa/disable` | Yes | Disable 2FA |
+| `GET` | `/api/security/devices` | Yes | List trusted devices |
+| `DELETE` | `/api/security/devices/:id` | Yes | Remove device |
+| `GET` | `/api/security/sessions` | Yes | List active sessions |
+| `DELETE` | `/api/security/sessions/:id` | Yes | Revoke session |
+
+### Profile (`/api/profile/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/profile` | Yes | Get user profile |
+| `PUT` | `/api/profile` | Yes | Update profile |
+| `PUT` | `/api/profile/password` | Yes | Change password |
+| `DELETE` | `/api/profile` | Yes | Delete account |
+
+### Wallet Service (`/api/wallets/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/wallets/create` | Yes | Create a new wallet |
+| `GET` | `/api/wallets/list` | Yes | List user's wallets |
+| `GET` | `/api/wallets/:id/balance` | Yes | Get wallet balance |
+| `POST` | `/api/wallets/deposit` | Yes | Deposit to wallet |
+| `POST` | `/api/wallets/withdraw` | Yes | Withdraw from wallet |
+| `POST` | `/api/wallets/transfer` | Yes | Transfer between wallets |
+| `GET` | `/api/wallets/:id/transactions` | Yes | Transaction history |
+
+### Payment Service (`/api/payments/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/payments/create` | Yes | Initiate a payment |
+| `POST` | `/api/payments/approve` | Yes | Approve a payment |
+| `POST` | `/api/payments/complete` | Yes | Complete/confirm a payment |
+| `POST` | `/api/payments/cancel` | Yes | Cancel a payment |
+| `POST` | `/api/payments/fail` | Yes | Record payment failure |
+| `GET` | `/api/payments/:id/status` | Yes | Get payment status |
+
+## Quick Start (Local Development)
+
+```bash
+# Clone the repo
+git clone https://github.com/Yasser1728/Tec-core-backend.git
+cd Tec-core-backend
+
+# Set up each service
+for service in tec-api-gateway tec-auth-service tec-wallet-service tec-payment-service; do
+  cd $service
+  cp .env.example .env   # ← fill in required values
+  npm install
+  cd ..
+done
+
+# Run any service in dev mode
+cd tec-auth-service && npm run dev
+```
+
+> **Tip:** Each service runs independently. For full end-to-end testing, start all 4 services in separate terminals, then point the gateway's service URLs to `http://localhost:<port>`.
 
 ## Service-level Documentation
 
