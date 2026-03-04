@@ -18,7 +18,7 @@ const generateBackupCodes = async (): Promise<string[]> => {
 // GET /security/2fa/status - Check 2FA status
 export const get2faStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -61,8 +61,7 @@ export const get2faStatus = async (req: Request, res: Response): Promise<void> =
 // POST /security/2fa/enable - Generate 2FA secret and QR code
 export const enable2fa = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
-    const username = (req as any).user?.username;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -74,6 +73,13 @@ export const enable2fa = async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+
+    // Fetch username for the QR code label
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true },
+    });
+    const username = userRecord?.username;
 
     // Check if 2FA is already enabled
     const existing = await prisma.twoFactorAuth.findUnique({
@@ -163,7 +169,7 @@ export const verify2fa = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { code } = req.body;
 
     if (!userId) {
@@ -250,7 +256,7 @@ export const verify2fa = async (req: Request, res: Response): Promise<void> => {
 // POST /security/2fa/disable - Disable 2FA
 export const disable2fa = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -307,7 +313,7 @@ export const disable2fa = async (req: Request, res: Response): Promise<void> => 
 // GET /security/devices - List trusted devices
 export const getDevices = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -346,7 +352,7 @@ export const getDevices = async (req: Request, res: Response): Promise<void> => 
 // DELETE /security/devices/:id - Remove trusted device
 export const removeDevice = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { id } = req.params;
 
     if (!userId) {
@@ -400,7 +406,7 @@ export const removeDevice = async (req: Request, res: Response): Promise<void> =
 // GET /security/sessions - List active sessions
 export const getSessions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -444,7 +450,7 @@ export const getSessions = async (req: Request, res: Response): Promise<void> =>
 // DELETE /security/sessions/:id - Revoke session
 export const revokeSession = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { id } = req.params;
 
     if (!userId) {

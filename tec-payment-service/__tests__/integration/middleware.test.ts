@@ -20,7 +20,7 @@ import {
   InMemoryIdempotencyStore,
   setIdempotencyStore,
 } from '../../src/middlewares/idempotency.middleware';
-import { requestId } from '../../src/middlewares/requestId.middleware';
+import { requestIdMiddleware as requestId } from '../../src/middleware/request-id';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

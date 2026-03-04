@@ -5,7 +5,7 @@ import { prisma } from '../config/database';
 // GET /kyc/status - Get KYC verification status
 export const getKycStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -56,7 +56,7 @@ export const submitKyc = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { fullName, dateOfBirth, country, documentType, documentId } = req.body;
 
     if (!userId) {
@@ -149,7 +149,7 @@ export const verifyKyc = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const currentUser = (req as any).user;
+    const currentUser = req.user;
     const { userId, approved, rejectionNote } = req.body;
 
     // Check if user is admin
