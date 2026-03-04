@@ -305,3 +305,85 @@ describe('Unauthorized access to financial routes', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ─── Unauthorized-access tests for previously unprotected routes ──────────────
+
+describe('Unauthorized access to previously unprotected routes', () => {
+  let app: Application;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = TEST_SECRET;
+    app = express();
+    app.use(express.json());
+
+    // Wire up minimal routes matching the now-protected read/link routes.
+    app.get('/', authenticate, (_req, res) => res.json({ ok: true }));
+    app.post('/link', authenticate, (_req, res) => res.json({ ok: true }));
+    app.get('/:id/balance', authenticate, (_req, res) => res.json({ ok: true }));
+    app.get('/:id/transactions', authenticate, (_req, res) => res.json({ ok: true }));
+  });
+
+  afterEach(() => {
+    delete process.env.JWT_SECRET;
+  });
+
+  it('GET /wallets returns 401 without token', async () => {
+    const res = await request(app).get('/').query({ userId: 'some-user-id' });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTHENTICATION_ERROR');
+  });
+
+  it('POST /wallets/link returns 401 without token', async () => {
+    const res = await request(app)
+      .post('/link')
+      .send({ userId: 'some-user-id', wallet_type: 'fiat', currency: 'USD' });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTHENTICATION_ERROR');
+  });
+
+  it('GET /wallets/:id/balance returns 401 without token', async () => {
+    const res = await request(app).get('/00000000-0000-0000-0000-000000000001/balance');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTHENTICATION_ERROR');
+  });
+
+  it('GET /wallets/:id/transactions returns 401 without token', async () => {
+    const res = await request(app).get('/00000000-0000-0000-0000-000000000001/transactions');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTHENTICATION_ERROR');
+  });
+
+  it('GET /wallets succeeds with a valid token', async () => {
+    const token = signToken('user-99');
+    const res = await request(app)
+      .get('/')
+      .query({ userId: 'some-user-id' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /wallets/link succeeds with a valid token', async () => {
+    const token = signToken('user-99');
+    const res = await request(app)
+      .post('/link')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'some-user-id', wallet_type: 'fiat', currency: 'USD' });
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /wallets/:id/balance succeeds with a valid token', async () => {
+    const token = signToken('user-99');
+    const res = await request(app)
+      .get('/00000000-0000-0000-0000-000000000001/balance')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /wallets/:id/transactions succeeds with a valid token', async () => {
+    const token = signToken('user-99');
+    const res = await request(app)
+      .get('/00000000-0000-0000-0000-000000000001/transactions')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+});
