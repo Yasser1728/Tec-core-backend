@@ -9,8 +9,15 @@ import {
   withdraw,
   transfer,
 } from '../controllers/wallet.controller';
-import { financialRateLimiter } from '../middlewares/rateLimit.middleware';
+import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middlewares/jwt.middleware';
+
+const financialRateLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60_000,
+  limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = Router();
 
