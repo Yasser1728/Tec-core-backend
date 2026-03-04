@@ -167,20 +167,52 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       throw piErr;
     }
 
-    // ─── Mark as completed in DB ────────────────────────────────────────────
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        status: 'completed',
-        completed_at: new Date(),
-      },
+    // ─── Mark as completed in DB (atomic) ───────────────────────────────────
+    // Use $transaction with a secondary state check to guard against concurrent
+    // state changes that may have occurred while the Pi API call was in flight.
+    const updatedPayment = await prisma.$transaction(async (tx) => {
+      const current = await tx.payment.findUnique({
+        where: { id: payment.id },
+      });
+
+      if (!current || current.status !== 'approved') {
+        logWarn('Webhook: payment state changed during Pi API call', {
+          paymentId: payment.id,
+          expectedStatus: 'approved',
+          actualStatus: current?.status ?? 'not_found',
+          piPaymentId,
+        });
+        return null;
+      }
+
+      return tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'completed',
+          completed_at: new Date(),
+          metadata: {
+            ...(typeof current.metadata === 'object' && current.metadata !== null
+              ? (current.metadata as Record<string, unknown>)
+              : {}),
+            transaction_id: txId,
+            completed_via: 'webhook',
+          },
+        },
+      });
     });
 
-    logInfo('Webhook: payment completed successfully', { paymentId: payment.id, piPaymentId });
+    if (!updatedPayment) {
+      // State changed concurrently — still return 200 to Pi Network
+      // so it doesn't retry the webhook.
+      res.status(200).json({ success: true });
+      return;
+    }
+
+    logInfo('Webhook: payment completed successfully', { paymentId: updatedPayment.id, piPaymentId });
 
     void createAuditLog({
-      userId: payment.user_id,
-      paymentId: payment.id,
+      userId: updatedPayment.user_id,
+      paymentId: updatedPayment.id,
       eventType: 'PAYMENT_CONFIRMED',
       metadata: { pi_payment_id: piPaymentId, transaction_id: txId, source: 'webhook' },
       ipAddress: getClientIp(req),
