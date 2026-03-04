@@ -9,6 +9,7 @@
  * Default limit: RATE_LIMIT_MAX requests per RATE_LIMIT_WINDOW milliseconds.
  */
 import { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { logger } from '../utils/logger';
 
 // ─── Store abstraction ────────────────────────────────────────────────────────
@@ -206,6 +207,22 @@ export const createRateLimiter = (
   };
 };
 
-/** Default rate limiter for financial operations (transfer/deposit/withdraw). */
-export const financialRateLimiter = createRateLimiter();
+/**
+ * Default rate limiter for wallet operations.
+ * Uses express-rate-limit (recognized by CodeQL) with per-IP limiting.
+ * Window/max configurable via RATE_LIMIT_WINDOW and RATE_LIMIT_MAX env vars.
+ */
+export const financialRateLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+  limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many requests. Please try again later.',
+    },
+  },
+});
 
