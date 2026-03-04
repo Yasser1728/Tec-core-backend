@@ -68,7 +68,7 @@ describe('jwtMiddleware', () => {
 
   it('returns 401 for an already-expired token', () => {
     // Sign with expiresIn: 0 — token is expired immediately
-    const expiredToken = jwt.sign({ userId: 'user-exp' }, process.env.JWT_SECRET!, { expiresIn: 0 });
+    const expiredToken = jwt.sign({ userId: 'user-exp' }, process.env.JWT_SECRET!, { expiresIn: -60 });
     const req = { headers: { authorization: `Bearer ${expiredToken}` } } as Request;
     const res = mockRes();
 

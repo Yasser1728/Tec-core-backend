@@ -68,7 +68,7 @@ describe('JWT authenticate middleware', () => {
   });
 
   it('returns 401 for an expired token', async () => {
-    const expiredToken = jwt.sign({ userId: 'u1' }, TEST_SECRET, { expiresIn: -1 });
+    const expiredToken = jwt.sign({ userId: 'u1' }, TEST_SECRET, { expiresIn: -60 });
     const res = await request(app)
       .get('/protected')
       .set('Authorization', `Bearer ${expiredToken}`);
