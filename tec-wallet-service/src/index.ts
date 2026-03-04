@@ -96,6 +96,7 @@ app.get('/metrics', async (_req, res) => {
 
 // Routes
 app.use(validateInternalKey);
+app.use('/wallets', walletRoutes);
 app.use('/api/wallets', walletRoutes);
 
 // 404 handler
