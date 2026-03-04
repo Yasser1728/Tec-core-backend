@@ -13,6 +13,8 @@ const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost
 const createProxyOptions = (target: string): Options => ({
   target,
   changeOrigin: true,
+  timeout: 60_000,
+  proxyTimeout: 60_000,
   pathRewrite: (path) => {
     // Remove /api prefix when forwarding to services
     return path.replace(/^\/api/, '');

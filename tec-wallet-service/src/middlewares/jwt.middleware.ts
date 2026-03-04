@@ -4,7 +4,7 @@
  * Security guarantees:
  *  - Only HS256 tokens are accepted; `alg: none` and all other algorithms are
  *    rejected before the signature is verified.
- *  - A configurable `clockTolerance` (JWT_CLOCK_TOLERANCE env, default 0 s)
+ *  - A configurable `clockTolerance` (JWT_CLOCK_TOLERANCE env, default 30 s)
  *    is applied to guard against minor clock skew between services.
  *  - Attaches `req.user = { id, role, sessionId }` and `req.userId` for
  *    downstream handlers. Both `id` and legacy `userId` payload fields are
@@ -26,7 +26,7 @@ interface TokenPayload {
 
 /** Clock tolerance in seconds applied when verifying token expiry. */
 const getClockTolerance = (): number =>
-  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '0', 10);
+  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '30', 10);
 
 /**
  * Decode the JWT header without verifying it (to inspect `alg` before full

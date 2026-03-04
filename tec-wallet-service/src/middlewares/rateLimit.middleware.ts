@@ -209,3 +209,6 @@ export const createRateLimiter = (
 /** Default rate limiter for financial operations (transfer/deposit/withdraw). */
 export const financialRateLimiter = createRateLimiter();
 
+/** Rate limiter for read operations (wallet list, balance, transactions). */
+export const readRateLimiter = createRateLimiter(60, 60_000);
+

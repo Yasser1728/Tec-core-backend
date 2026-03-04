@@ -79,7 +79,8 @@ app.use(cors({
   origin: buildCorsOrigin(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
+  exposedHeaders: ['X-Request-Id'],
   optionsSuccessStatus: 204,
 }));
 

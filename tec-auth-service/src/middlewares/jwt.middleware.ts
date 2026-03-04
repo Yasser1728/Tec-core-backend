@@ -14,7 +14,7 @@ interface TokenPayload {
 
 /** Clock tolerance in seconds applied when verifying token expiry. */
 const getClockTolerance = (): number =>
-  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '0', 10);
+  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '30', 10);
 
 /**
  * Decode the JWT header without verifying it (to inspect `alg` before full
