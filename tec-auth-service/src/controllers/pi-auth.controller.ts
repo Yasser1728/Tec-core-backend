@@ -21,15 +21,43 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Step 1: Verify the Pi access token with Pi Network API
+    // Step 1: Verify the Pi access token with Pi Network API (with timeout + retry)
+    const PI_API_URL = `${PI_API_BASE}/v2/me`;
+    const MAX_RETRIES = 2;
+    const RETRY_DELAYS_MS = [1000, 2000];
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let piResponse: any;
-    try {
-      piResponse = await fetch(`${PI_API_BASE}/v2/me`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    } catch (networkError) {
-      console.error('Pi Network API unreachable:', networkError);
+    let lastErrorBody = '';
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        piResponse = await fetch(PI_API_URL, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        // Break on success or a non-5xx response (4xx errors are not retried)
+        if (piResponse.status < 500) {
+          break;
+        }
+        // 5xx: read body once for logging, then retry if attempts remain
+        lastErrorBody = await piResponse.text().catch(() => '');
+        console.error(
+          `Pi Network API returned ${piResponse.status} on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
+          lastErrorBody
+        );
+      } catch (networkError) {
+        console.error(
+          `Pi Network API unreachable on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
+          networkError
+        );
+      }
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+      }
+    }
+
+    if (!piResponse) {
       res.status(503).json({
         success: false,
         error: { code: 'PI_SERVICE_UNAVAILABLE', message: 'Pi Network API is currently unavailable' },
@@ -38,6 +66,10 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (!piResponse.ok) {
+      console.error(
+        `Pi Network API final non-ok response ${piResponse.status} (URL: ${PI_API_URL}):`,
+        lastErrorBody
+      );
       res.status(401).json({
         success: false,
         error: { code: 'INVALID_TOKEN', message: 'Invalid Pi access token' },
