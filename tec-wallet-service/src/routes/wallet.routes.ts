@@ -9,7 +9,7 @@ import {
   withdraw,
   transfer,
 } from '../controllers/wallet.controller';
-import { financialRateLimiter, readRateLimiter } from '../middlewares/rateLimit.middleware';
+import { financialRateLimiter } from '../middlewares/rateLimit.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
 
 const router = Router();
@@ -18,7 +18,7 @@ const router = Router();
 router.get(
   '/',
   authenticate,
-  readRateLimiter,
+  financialRateLimiter,
   [query('userId').notEmpty()],
   getWallets
 );
@@ -27,7 +27,7 @@ router.get(
 router.post(
   '/link',
   authenticate,
-  readRateLimiter,
+  financialRateLimiter,
   [
     body('userId').notEmpty(),
     body('wallet_type').isIn(['pi', 'crypto', 'fiat']),
@@ -56,7 +56,7 @@ router.post(
 router.get(
   '/:id/balance',
   authenticate,
-  readRateLimiter,
+  financialRateLimiter,
   [param('id').isUUID()],
   getWalletBalance
 );
@@ -65,7 +65,7 @@ router.get(
 router.get(
   '/:id/transactions',
   authenticate,
-  readRateLimiter,
+  financialRateLimiter,
   [
     param('id').isUUID(),
     query('page').optional().isInt({ min: 1 }),

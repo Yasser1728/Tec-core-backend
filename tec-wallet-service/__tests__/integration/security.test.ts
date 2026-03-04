@@ -8,7 +8,7 @@
 import request from 'supertest';
 import express, { Application, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { createRateLimiter, InMemoryStore, setStore, readRateLimiter } from '../../src/middlewares/rateLimit.middleware';
+import { createRateLimiter, InMemoryStore, setStore, financialRateLimiter } from '../../src/middlewares/rateLimit.middleware';
 import { authenticate } from '../../src/middlewares/jwt.middleware';
 
 const TEST_SECRET = 'test-secret-for-unit-tests-only';
@@ -317,10 +317,10 @@ describe('Unauthorized access to previously unprotected routes', () => {
     app.use(express.json());
 
     // Wire up minimal routes matching the now-protected read/link routes.
-    app.get('/', authenticate, readRateLimiter, (_req, res) => res.json({ ok: true }));
-    app.post('/link', authenticate, readRateLimiter, (_req, res) => res.json({ ok: true }));
-    app.get('/:id/balance', authenticate, readRateLimiter, (_req, res) => res.json({ ok: true }));
-    app.get('/:id/transactions', authenticate, readRateLimiter, (_req, res) => res.json({ ok: true }));
+    app.get('/', authenticate, financialRateLimiter, (_req, res) => res.json({ ok: true }));
+    app.post('/link', authenticate, financialRateLimiter, (_req, res) => res.json({ ok: true }));
+    app.get('/:id/balance', authenticate, financialRateLimiter, (_req, res) => res.json({ ok: true }));
+    app.get('/:id/transactions', authenticate, financialRateLimiter, (_req, res) => res.json({ ok: true }));
   });
 
   afterEach(() => {

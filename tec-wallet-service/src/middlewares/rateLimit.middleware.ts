@@ -209,9 +209,3 @@ export const createRateLimiter = (
 /** Default rate limiter for financial operations (transfer/deposit/withdraw). */
 export const financialRateLimiter = createRateLimiter();
 
-/** Rate limiter for read/link operations (higher limit than financial ops). */
-export const readRateLimiter = createRateLimiter(
-  parseInt(process.env.READ_RATE_LIMIT_MAX ?? '30', 10),
-  parseInt(process.env.READ_RATE_LIMIT_WINDOW ?? '60000', 10),
-);
-
