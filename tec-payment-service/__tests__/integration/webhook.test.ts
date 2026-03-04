@@ -5,8 +5,10 @@ import express from 'express';
 const mockPrismaClient = {
   payment: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     update: jest.fn(),
   },
+  $transaction: jest.fn(),
 };
 
 jest.mock('../../src/config/database', () => ({
@@ -45,6 +47,8 @@ describe('POST /payments/webhook/incomplete', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.PI_API_KEY = PI_API_KEY;
+    // Default: $transaction executes the callback with the mock client
+    mockPrismaClient.$transaction.mockImplementation(async (fn: (tx: typeof mockPrismaClient) => Promise<unknown>) => fn(mockPrismaClient));
     // Mock global fetch so Pi API calls succeed
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -83,6 +87,7 @@ describe('POST /payments/webhook/incomplete', () => {
       pi_payment_id: 'pi_payment_123',
     };
     mockPrismaClient.payment.findFirst.mockResolvedValue(mockPayment);
+    mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
     mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'completed' });
 
     const res = await request(app)
@@ -102,6 +107,7 @@ describe('POST /payments/webhook/incomplete', () => {
       pi_payment_id: 'pi_payment_123',
     };
     mockPrismaClient.payment.findFirst.mockResolvedValue(mockPayment);
+    mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
     mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'completed' });
 
     const res = await request(app)
@@ -189,6 +195,7 @@ describe('POST /payments/webhook/incomplete', () => {
     };
     const updatedPayment = { ...mockPayment, status: 'completed', completed_at: new Date() };
     mockPrismaClient.payment.findFirst.mockResolvedValue(mockPayment);
+    mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
     mockPrismaClient.payment.update.mockResolvedValue(updatedPayment);
 
     const res = await request(app)
