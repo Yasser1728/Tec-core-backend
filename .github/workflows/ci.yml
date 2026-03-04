@@ -121,7 +121,16 @@ jobs:
           echo "RAILWAY_TOKEN is present."
 
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: |
+          for i in 1 2 3; do
+            npm install -g @railway/cli && break
+            if [ "$i" -lt 3 ]; then
+              echo "Retry $i/3 — Railway CLI install failed, retrying in 10s..."
+              sleep 10
+            else
+              exit 1
+            fi
+          done
 
       - name: Run Prisma migrations
         env:
@@ -145,7 +154,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Railway CLI
-        run: npm install -g @railway/cli
+        run: |
+          for i in 1 2 3; do
+            npm install -g @railway/cli && break
+            if [ "$i" -lt 3 ]; then
+              echo "Retry $i/3 — Railway CLI install failed, retrying in 10s..."
+              sleep 10
+            else
+              exit 1
+            fi
+          done
 
       - name: Deploy service
         env:
