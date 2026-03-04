@@ -9,9 +9,13 @@ Client
   │
   ▼
 API Gateway  (PORT 3000)
-  ├─ /api/auth/*      ──▶  Auth Service
-  ├─ /api/wallets/*   ──▶  Wallet Service
-  └─ /api/payments/*  ──▶  Payment Service
+  ├─ /api/auth/*          ──▶  Auth Service
+  ├─ /api/subscriptions/* ──▶  Auth Service
+  ├─ /api/kyc/*           ──▶  Auth Service
+  ├─ /api/security/*      ──▶  Auth Service
+  ├─ /api/profile/*       ──▶  Auth Service
+  ├─ /api/wallets/*       ──▶  Wallet Service
+  └─ /api/payments/*      ──▶  Payment Service
 ```
 
 ## Environment Variables
@@ -66,6 +70,10 @@ ALLOWED_ORIGINS=https://tec-app.vercel.app,https://*.vercel.app
 |---|---|---|
 | `GET` | `/health` | Gateway health (checks all downstream services) |
 | `*` | `/api/auth/*` | Auth Service |
+| `*` | `/api/subscriptions/*` | Auth Service |
+| `*` | `/api/kyc/*` | Auth Service |
+| `*` | `/api/security/*` | Auth Service |
+| `*` | `/api/profile/*` | Auth Service |
 | `*` | `/api/wallets/*` | Wallet Service |
 | `*` | `/api/payments/*` | Payment Service |
 

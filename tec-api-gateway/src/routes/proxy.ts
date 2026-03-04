@@ -46,6 +46,34 @@ router.use(
   createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
 );
 
+// Subscription routes: /api/subscriptions/*
+router.use(
+  '/subscriptions',
+  injectInternalKey,
+  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
+);
+
+// KYC routes: /api/kyc/*
+router.use(
+  '/kyc',
+  injectInternalKey,
+  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
+);
+
+// Security routes: /api/security/*
+router.use(
+  '/security',
+  injectInternalKey,
+  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
+);
+
+// Profile routes: /api/profile/*
+router.use(
+  '/profile',
+  injectInternalKey,
+  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
+);
+
 // Wallet Service routes: /api/wallets/*
 router.use(
   '/wallets',
