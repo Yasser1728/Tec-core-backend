@@ -12,20 +12,19 @@ import {
 import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middlewares/jwt.middleware';
 
-const financialRateLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60_000,
-  limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const router = Router();
 
 // GET /wallets - Get all wallets for a user
 router.get(
   '/',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [query('userId').notEmpty()],
   getWallets
 );
@@ -34,7 +33,13 @@ router.get(
 router.post(
   '/link',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [
     body('userId').notEmpty(),
     body('wallet_type').isIn(['pi', 'crypto', 'fiat']),
@@ -48,7 +53,13 @@ router.post(
 router.post(
   '/transfer',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [
     body('fromWalletId').isUUID(),
     body('toWalletId').isUUID(),
@@ -63,7 +74,13 @@ router.post(
 router.get(
   '/:id/balance',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [param('id').isUUID()],
   getWalletBalance
 );
@@ -72,7 +89,13 @@ router.get(
 router.get(
   '/:id/transactions',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [
     param('id').isUUID(),
     query('page').optional().isInt({ min: 1 }),
@@ -87,7 +110,13 @@ router.get(
 router.post(
   '/:id/deposit',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [
     param('id').isUUID(),
     body('amount').isFloat({ min: 0.000001 }),
@@ -101,7 +130,13 @@ router.post(
 router.post(
   '/:id/withdraw',
   authenticate,
-  financialRateLimiter,
+  rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW ?? '60000', 10) || 60000,
+    limit: parseInt(process.env.RATE_LIMIT_MAX ?? '5', 10) || 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Please try again later.' } },
+  }),
   [
     param('id').isUUID(),
     body('amount').isFloat({ min: 0.000001 }),
