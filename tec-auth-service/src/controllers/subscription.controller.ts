@@ -72,7 +72,7 @@ export const getPlans = async (req: Request, res: Response): Promise<void> => {
 // GET /subscriptions/status - Get current user subscription status
 export const getSubscriptionStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -152,7 +152,7 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { planName } = req.body;
 
     if (!userId) {
@@ -247,7 +247,7 @@ export const subscribe = async (req: Request, res: Response): Promise<void> => {
 // POST /subscriptions/cancel - Cancel subscription
 export const cancelSubscription = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -324,7 +324,7 @@ export const upgradeSubscription = async (req: Request, res: Response): Promise<
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { planName } = req.body;
 
     if (!userId) {

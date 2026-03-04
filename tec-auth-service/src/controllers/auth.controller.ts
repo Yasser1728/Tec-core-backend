@@ -203,7 +203,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 // Logout user
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).userId;
+    const userId = req.userId;
 
     // Revoke all refresh tokens for this user (logout all devices)
     await prisma.refreshToken.deleteMany({
@@ -307,7 +307,7 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
 // Get current user
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).userId;
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

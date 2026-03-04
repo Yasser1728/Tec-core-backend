@@ -1,16 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 
-// Extend Express Request to include userId
-declare module 'express-serve-static-core' {
-  interface Request {
-    userId?: string;
-  }
-}
-
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   try {
-    // Get token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
@@ -23,9 +15,8 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7);
 
-    // Verify token
     const decoded = verifyAccessToken(token);
     if (!decoded) {
       res.status(401).json({
@@ -38,8 +29,9 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    // Attach userId to request
+    // Set both req.userId and req.user so controllers can use either pattern
     req.userId = decoded.userId;
+    req.user = { id: decoded.userId };
     next();
   } catch (error) {
     console.error('Authentication error:', error);

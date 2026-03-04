@@ -6,7 +6,7 @@ import { hashPassword, comparePassword } from '../utils/hash';
 // GET /profile - Get user profile
 export const getProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
@@ -77,7 +77,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { email, username } = req.body;
 
     if (!userId) {
@@ -172,7 +172,7 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     const { currentPassword, newPassword } = req.body;
 
     if (!userId) {
@@ -253,7 +253,7 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
 // DELETE /profile - Delete account (soft delete)
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       res.status(401).json({
