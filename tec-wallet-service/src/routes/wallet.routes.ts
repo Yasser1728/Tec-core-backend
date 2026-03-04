@@ -17,6 +17,8 @@ const router = Router();
 // GET /wallets - Get all wallets for a user
 router.get(
   '/',
+  authenticate,
+  financialRateLimiter,
   [query('userId').notEmpty()],
   getWallets
 );
@@ -24,6 +26,8 @@ router.get(
 // POST /wallets/link - Link a new wallet
 router.post(
   '/link',
+  authenticate,
+  financialRateLimiter,
   [
     body('userId').notEmpty(),
     body('wallet_type').isIn(['pi', 'crypto', 'fiat']),
@@ -51,6 +55,8 @@ router.post(
 // GET /wallets/:id/balance - Get wallet balance
 router.get(
   '/:id/balance',
+  authenticate,
+  financialRateLimiter,
   [param('id').isUUID()],
   getWalletBalance
 );
@@ -58,6 +64,8 @@ router.get(
 // GET /wallets/:id/transactions - Get wallet transactions with pagination
 router.get(
   '/:id/transactions',
+  authenticate,
+  financialRateLimiter,
   [
     param('id').isUUID(),
     query('page').optional().isInt({ min: 1 }),
