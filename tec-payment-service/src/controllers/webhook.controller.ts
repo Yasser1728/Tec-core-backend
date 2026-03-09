@@ -190,6 +190,7 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
         data: {
           status: 'completed',
           completed_at: new Date(),
+          transaction_id: txId ?? null,
           metadata: {
             ...(typeof current.metadata === 'object' && current.metadata !== null
               ? (current.metadata as Record<string, unknown>)
