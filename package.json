@@ -1,0 +1,20 @@
+{
+  "name": "tec-core-backend",
+  "version": "1.0.0",
+  "description": "TEC Core Backend Monorepo",
+  "private": true,
+  "workspaces": [
+    "tec-api-gateway",
+    "tec-auth-service",
+    "tec-payment-service",
+    "tec-wallet-service"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace=tec-api-gateway",
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
