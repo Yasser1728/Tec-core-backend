@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  tec-api-gateway:
+    image: your_api_gateway_image
+    ports:
+      - "8080:8080"
+    depends_on:
+      - tec-auth-service
+      - tec-wallet-service
+      - tec-payment-service
+
+  tec-auth-service:
+    image: your_auth_service_image
+    ports:
+      - "8081:8080"
+
+  tec-wallet-service:
+    image: your_wallet_service_image
+    ports:
+      - "8082:8080"
+
+  tec-payment-service:
+    image: your_payment_service_image
+    ports:
+      - "8083:8080"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:alpine
+    environment:
+      POSTGRES_DB: your_db_name
+      POSTGRES_USER: your_db_user
+      POSTGRES_PASSWORD: your_db_password
+    ports:
+      - "5432:5432"
