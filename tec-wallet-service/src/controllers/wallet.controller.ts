@@ -604,3 +604,109 @@ export const transfer = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
+
+// ─── Internal: Add Funds by userId ────────────────────────────────────────────
+
+/**
+ * POST /wallets/internal/add-funds
+ * Internal service-to-service endpoint (no JWT required; protected by the
+ * x-internal-key middleware applied globally).
+ *
+ * Finds or creates a wallet for the given userId+currency, then deposits the
+ * requested amount atomically.  Intended for use by tec-payment-service to
+ * credit TEC tokens after a successful Pi payment (1 Pi = 0.1 TEC).
+ */
+export const addFundsInternal = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId, amount, currency = 'TEC', referenceId } = req.body as {
+      userId: string;
+      amount: number | string;
+      currency?: string;
+      referenceId?: string;
+    };
+
+    if (!userId || amount === undefined || amount === null || amount === '') {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'userId and amount are required' },
+      });
+      return;
+    }
+
+    const parsedAmount = parseFloat(String(amount));
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'amount must be a positive number' },
+      });
+      return;
+    }
+
+    const resolvedCurrency = currency.toUpperCase();
+
+    // Find or auto-create a wallet for this user+currency.
+    let wallet = await prisma.wallet.findFirst({
+      where: { user_id: userId, currency: resolvedCurrency, deleted_at: null },
+    });
+
+    if (!wallet) {
+      const primaryExists = await prisma.wallet.findFirst({
+        where: { user_id: userId, is_primary: true, deleted_at: null },
+      });
+      wallet = await prisma.wallet.create({
+        data: {
+          user_id: userId,
+          wallet_type: 'internal',
+          currency: resolvedCurrency,
+          balance: 0,
+          is_primary: !primaryExists,
+        },
+      });
+    }
+
+    const walletId = wallet.id;
+    const previousBalance = wallet.balance;
+
+    const updatedWallet = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await writeAuditLog(tx, {
+        action: 'deposit',
+        entity: 'wallet',
+        entityId: walletId,
+        userId,
+        before: { balance: previousBalance },
+        after: { balance: previousBalance + parsedAmount },
+        metadata: { referenceId, source: 'payment-service' },
+      });
+
+      const updated = await tx.wallet.update({
+        where: { id: walletId },
+        data: { balance: { increment: parsedAmount } },
+      });
+
+      await tx.transaction.create({
+        data: {
+          wallet_id: walletId,
+          type: 'deposit',
+          amount: parsedAmount,
+          asset_type: resolvedCurrency,
+          status: 'completed',
+          description: 'Payment credit (Pi → TEC conversion)',
+          metadata: { referenceId, source: 'payment-service' },
+        },
+      });
+
+      return updated;
+    });
+
+    res.json({
+      success: true,
+      data: { balance: updatedWallet.balance },
+    });
+  } catch (error) {
+    logger.error('AddFundsInternal error', { error: (error as Error).message });
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to add funds' },
+    });
+  }
+};

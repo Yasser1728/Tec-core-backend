@@ -9,6 +9,7 @@ import {
 import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
 import { piApprovePayment, piCompletePayment, PiApiError } from '../services/payment.service';
+import { creditTecWallet } from '../services/wallet.service';
 import { env } from '../config/env';
 
 // Helper function to safely get metadata as an object
@@ -447,6 +448,18 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       success: true,
       data: { payment: updatedPayment },
     });
+
+    // Fire-and-forget: credit TEC tokens for Pi payments (1 Pi = 0.1 TEC).
+    // Errors are logged but never propagate — wallet unavailability must not
+    // block or roll back an already-confirmed payment.
+    if (updatedPayment.payment_method === 'pi') {
+      void creditTecWallet(
+        updatedPayment.user_id,
+        updatedPayment.amount,
+        payment_id,
+        req.requestId,
+      );
+    }
   } catch (error) {
     const err = error as Error & { statusCode?: number; from?: string };
 

@@ -17,6 +17,8 @@ const envSchema = z.object({
   RECONCILE_APPROVED_THRESHOLD_MS: z.coerce.number().positive().default(3600000),
   // Internal service-to-service auth secret
   INTERNAL_SECRET: z.string().min(1).optional(),
+  // Wallet service URL for TEC crediting after Pi payment completion
+  WALLET_SERVICE_URL: z.string().url().optional(),
   // Observability (all optional — safe defaults applied in infra/logger.ts etc.)
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
   SERVICE_NAME: z.string().optional(),
