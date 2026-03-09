@@ -8,11 +8,17 @@ import {
   deposit,
   withdraw,
   transfer,
+  addFundsInternal,
 } from '../controllers/wallet.controller';
 import { financialRateLimiter } from '../middlewares/rateLimit.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
 
 const router = Router();
+
+// POST /wallets/internal/add-funds — internal service-to-service endpoint.
+// Must be registered BEFORE parameterised /:id routes to avoid path conflicts.
+// Protected by the global validateInternalKey middleware (no JWT required).
+router.post('/internal/add-funds', addFundsInternal);
 
 // GET /wallets - Get all wallets for a user
 router.get(
