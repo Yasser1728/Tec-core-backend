@@ -1,18 +1,1 @@
-{
-  "name": "tec-core-backend",
-  "version": "1.0.0",
-  "description": "TEC Platform Microservices Backend",
-  "private": true,
-  "workspaces": [
-    "tec-api-gateway",
-    "tec-auth-service",
-    "tec-payment-service",
-    "tec-wallet-service"
-  ],
-  "scripts": {
-    "start": "npm run start --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
-  }
-}
+{"name":"tec-core-backend","version":"1.0.0","description":"TEC Core Backend Monorepo","private":true,"workspaces":["tec-api-gateway","tec-auth-service","tec-payment-service","tec-wallet-service"],"scripts":{"dev":"npm run dev --workspaces --if-present","build":"npm run build --workspaces --if-present","test":"npm run test --workspaces --if-present","lint":"npm run lint --workspaces --if-present","docker:up":"docker-compose up -d","docker:down":"docker-compose down"},"devDependencies":{"typescript":"^5.9.3","eslint":"^9.0.0","prettier":"^3.0.0"}}
