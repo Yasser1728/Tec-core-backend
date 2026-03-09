@@ -26,6 +26,7 @@ const getClientIp = (req: Request): string => {
 // ─── Allowed state transitions ────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   created:   ['approved', 'cancelled', 'failed'],
+  pending:   ['completed', 'cancelled', 'failed'],
   approved:  ['completed', 'cancelled', 'failed'],
 };
 
@@ -168,65 +169,56 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const { payment_id, pi_payment_id } = req.body;
+    const { paymentId, amount, userId } = req.body;
+    const maxAmount = getMaxAmountLimit();
 
-    if (pi_payment_id && (!env.PI_API_KEY || !env.PI_APP_ID)) {
-      res.status(503).json({
+    if (amount > maxAmount) {
+      res.status(400).json({
         success: false,
         error: {
-          code: 'SERVICE_NOT_CONFIGURED',
-          message: 'Pi Network credentials are not configured. Contact the administrator.',
+          code: 'VALIDATION_ERROR',
+          message: `amount must not exceed ${maxAmount}`,
         },
       });
       return;
     }
 
-    logInfo('Approving payment', { payment_id, pi_payment_id, requestId: req.requestId });
+    logInfo('Approving payment', { paymentId, userId, amount, requestId: req.requestId });
 
-    const payment = await prisma.payment.findUnique({
-      where: { id: payment_id },
+    // Save to DB as 'pending' before calling Pi Network
+    const payment = await prisma.payment.create({
+      data: {
+        user_id: userId,
+        amount,
+        payment_method: 'pi',
+        status: 'pending',
+        pi_payment_id: paymentId,
+      },
     });
 
-    if (!payment) {
-      logWarn('Payment not found', { payment_id });
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Payment not found',
-        },
-      });
-      return;
-    }
+    logInfo('Payment record created as pending', { id: payment.id, paymentId, requestId: req.requestId });
 
-    if (!isTransitionAllowed(payment.status, 'approved')) {
-      const userId = payment.user_id;
-      logWarn('Invalid transition attempt: approve', { payment_id, from: payment.status, to: 'approved' });
-      void createAuditLog({
-        userId,
-        paymentId: payment_id,
-        eventType: 'INVALID_TRANSITION_ATTEMPT',
-        metadata: { from: payment.status, to: 'approved' },
-        ipAddress: getClientIp(req),
-        requestId: req.requestId,
-      });
-      res.status(409).json({
-        success: false,
-        error: {
-          code: 'INVALID_STATUS',
-          message: `Payment cannot transition from '${payment.status}' to 'approved'`,
-        },
-      });
-      return;
-    }
+    void createAuditLog({
+      userId,
+      paymentId: payment.id,
+      eventType: 'PAYMENT_INITIATED',
+      metadata: { paymentId, amount },
+      ipAddress: getClientIp(req),
+      requestId: req.requestId,
+    });
 
-    // ─── Pi Network: approve on Pi side before persisting ─────────────────
-    if (payment.payment_method === 'pi' && pi_payment_id) {
+    // Call Pi Network to approve
+    if (env.PI_API_KEY && env.PI_APP_ID) {
       try {
-        await piApprovePayment(pi_payment_id);
+        await piApprovePayment(paymentId);
       } catch (piErr) {
         if (piErr instanceof PiApiError) {
-          logWarn('Pi API approve error', { payment_id, code: piErr.code, message: piErr.message });
+          logWarn('Pi API approve error', { paymentId, code: piErr.code, message: piErr.message });
+          // Mark the payment as failed since Pi Network approval did not succeed
+          await prisma.payment.update({
+            where: { id: payment.id },
+            data: { status: 'failed', failed_at: new Date() },
+          });
           res.status(piErr.httpStatus).json({
             success: false,
             error: { code: piErr.code, message: piErr.message },
@@ -237,44 +229,23 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       }
     }
 
-    const updatedPayment = await prisma.payment.update({
-      where: { id: payment_id },
-      data: {
-        status: 'approved',
-        pi_payment_id,
-        approved_at: new Date(),
-      },
-    });
-
-    logInfo('Payment approved successfully', { paymentId: updatedPayment.id, status: updatedPayment.status });
-
     void createAuditLog({
-      userId: payment.user_id,
-      paymentId: payment_id,
+      userId,
+      paymentId: payment.id,
       eventType: 'PAYMENT_APPROVED',
-      metadata: { pi_payment_id },
+      metadata: { paymentId },
       ipAddress: getClientIp(req),
       requestId: req.requestId,
     });
 
     res.json({
       success: true,
-      data: { payment: updatedPayment },
+      data: { payment },
     });
   } catch (error) {
     logError('ApprovePayment error', { error: (error as Error).message });
-    
+
     if (error instanceof PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        res.status(410).json({
-          success: false,
-          error: {
-            code: 'PAYMENT_MODIFIED',
-            message: 'Payment was modified or deleted during approval',
-          },
-        });
-        return;
-      }
       if (error.code === 'P2002') {
         res.status(409).json({
           success: false,
@@ -286,8 +257,8 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
         return;
       }
     }
-    
-    if (error instanceof PrismaClientInitializationError || 
+
+    if (error instanceof PrismaClientInitializationError ||
         error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
@@ -298,7 +269,7 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       });
       return;
     }
-    
+
     res.status(500).json({
       success: false,
       error: {
@@ -330,22 +301,18 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const { payment_id, transaction_id } = req.body;
-    
-    logInfo('Completing payment', { payment_id, transaction_id, requestId: req.requestId });
+    const { paymentId, txid } = req.body;
 
-    // ─── Pi Network: pre-flight state check + Pi API call ─────────────────
-    // Fetch payment details outside the DB transaction so that a potentially
-    // long-running Pi API call does not hold an open DB transaction.
-    // A secondary state check inside the subsequent $transaction guards against
-    // concurrent state changes that may occur while the Pi API call is in flight.
+    logInfo('Completing payment', { paymentId, txid, requestId: req.requestId });
+
+    // Find payment by Pi Network payment ID
     const preFlightPayment = await prisma.payment.findUnique({
-      where: { id: payment_id },
-      select: { status: true, payment_method: true, pi_payment_id: true, user_id: true },
+      where: { pi_payment_id: paymentId },
+      select: { id: true, status: true, payment_method: true, pi_payment_id: true, user_id: true },
     });
 
     if (!preFlightPayment) {
-      logWarn('Payment not found (pre-flight)', { payment_id });
+      logWarn('Payment not found (pre-flight)', { paymentId });
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Payment not found' },
@@ -354,10 +321,10 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (!isTransitionAllowed(preFlightPayment.status, 'completed')) {
-      logWarn('Invalid transition attempt: complete (pre-flight)', { payment_id, from: preFlightPayment.status });
+      logWarn('Invalid transition attempt: complete (pre-flight)', { paymentId, from: preFlightPayment.status });
       void createAuditLog({
         userId: preFlightPayment.user_id,
-        paymentId: payment_id,
+        paymentId: preFlightPayment.id,
         eventType: 'INVALID_TRANSITION_ATTEMPT',
         metadata: { from: preFlightPayment.status, to: 'completed' },
         ipAddress: getClientIp(req),
@@ -373,22 +340,13 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
-      if (!env.PI_API_KEY || !env.PI_APP_ID) {
-        res.status(503).json({
-          success: false,
-          error: {
-            code: 'SERVICE_NOT_CONFIGURED',
-            message: 'Pi Network credentials are not configured. Contact the administrator.',
-          },
-        });
-        return;
-      }
+    // Call Pi Network to complete after state validation
+    if (env.PI_API_KEY && env.PI_APP_ID) {
       try {
-        await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
+        await piCompletePayment(paymentId, txid);
       } catch (piErr) {
         if (piErr instanceof PiApiError) {
-          logWarn('Pi API complete error', { payment_id, code: piErr.code, message: piErr.message });
+          logWarn('Pi API complete error', { paymentId, code: piErr.code, message: piErr.message });
           res.status(piErr.httpStatus).json({
             success: false,
             error: { code: piErr.code, message: piErr.message },
@@ -398,11 +356,13 @@ export const completePayment = async (req: Request, res: Response): Promise<void
         throw piErr;
       }
     }
-    // ─── end Pi Network pre-flight ─────────────────────────────────────────
 
+    // Update DB status to 'completed' and save txid after Pi Network returns success
+    // Use the internal payment ID from pre-flight to avoid a redundant DB lookup
+    const preFlightId = preFlightPayment.id;
     const updatedPayment = await prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({
-        where: { id: payment_id },
+        where: { id: preFlightId },
       });
 
       if (!payment) {
@@ -419,14 +379,11 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       }
 
       return tx.payment.update({
-        where: { id: payment_id },
+        where: { id: preFlightId },
         data: {
           status: 'completed',
+          txid,
           completed_at: new Date(),
-          metadata: {
-            ...getMetadataObject(payment.metadata),
-            transaction_id,
-          },
         },
       });
     });
@@ -435,9 +392,9 @@ export const completePayment = async (req: Request, res: Response): Promise<void
 
     void createAuditLog({
       userId: updatedPayment.user_id,
-      paymentId: payment_id,
+      paymentId: updatedPayment.id,
       eventType: 'PAYMENT_CONFIRMED',
-      metadata: { transaction_id },
+      metadata: { paymentId, txid },
       ipAddress: getClientIp(req),
       requestId: req.requestId,
     });
@@ -459,10 +416,10 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (err.message === 'INVALID_TRANSITION') {
-      logWarn('Invalid transition attempt: complete', { payment_id: req.body.payment_id, from: err.from });
+      logWarn('Invalid transition attempt: complete', { paymentId: req.body.paymentId, from: err.from });
       void createAuditLog({
         userId: req.userId ?? 'unknown',
-        paymentId: req.body.payment_id,
+        paymentId: req.body.paymentId,
         eventType: 'INVALID_TRANSITION_ATTEMPT',
         metadata: { from: err.from, to: 'completed' },
         ipAddress: getClientIp(req),
@@ -479,7 +436,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     logError('CompletePayment error', { error: err.message });
-    
+
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2025') {
         res.status(410).json({
@@ -492,8 +449,8 @@ export const completePayment = async (req: Request, res: Response): Promise<void
         return;
       }
     }
-    
-    if (error instanceof PrismaClientInitializationError || 
+
+    if (error instanceof PrismaClientInitializationError ||
         error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
@@ -504,7 +461,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       });
       return;
     }
-    
+
     res.status(500).json({
       success: false,
       error: {

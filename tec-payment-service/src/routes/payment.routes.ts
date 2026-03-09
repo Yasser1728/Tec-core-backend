@@ -63,15 +63,16 @@ router.post(
   authenticate,
   paymentRateLimiter,
   [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('pi_payment_id')
-      .optional()
-      .isString().withMessage('pi_payment_id must be a string')
-      .trim()
-      .matches(/^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$/)
-      .withMessage('pi_payment_id contains invalid characters'),
+    body('paymentId')
+      .notEmpty().withMessage('paymentId is required')
+      .isString().withMessage('paymentId must be a string')
+      .trim(),
+    body('amount')
+      .notEmpty().withMessage('amount is required')
+      .isFloat({ min: 0.01 }).withMessage('amount must be greater than 0'),
+    body('userId')
+      .notEmpty().withMessage('userId is required')
+      .isUUID().withMessage('userId must be a valid UUID'),
   ],
   approvePayment
 );
@@ -83,15 +84,14 @@ router.post(
   confirmRateLimiter,
   idempotency,
   [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('transaction_id')
-      .optional()
-      .isString().withMessage('transaction_id must be a string')
-      .trim()
-      .matches(/^[a-zA-Z0-9_-]{8,128}$/)
-      .withMessage('transaction_id must be 8-128 alphanumeric characters (hyphens and underscores allowed)'),
+    body('paymentId')
+      .notEmpty().withMessage('paymentId is required')
+      .isString().withMessage('paymentId must be a string')
+      .trim(),
+    body('txid')
+      .notEmpty().withMessage('txid is required')
+      .isString().withMessage('txid must be a string')
+      .trim(),
   ],
   completePayment
 );

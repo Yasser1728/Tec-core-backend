@@ -1,6 +1,7 @@
 import request from 'supertest';
 import express from 'express';
 import { body, param, validationResult } from 'express-validator';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 // Mock prisma client
 const mockPrismaClient = {
@@ -61,13 +62,16 @@ app.post(
 app.post(
   '/payments/approve',
   [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('pi_payment_id')
-      .optional()
-      .isString().withMessage('pi_payment_id must be a string')
+    body('paymentId')
+      .notEmpty().withMessage('paymentId is required')
+      .isString().withMessage('paymentId must be a string')
       .trim(),
+    body('amount')
+      .notEmpty().withMessage('amount is required')
+      .isFloat({ min: 0.01 }).withMessage('amount must be greater than 0'),
+    body('userId')
+      .notEmpty().withMessage('userId is required')
+      .isUUID().withMessage('userId must be a valid UUID'),
   ],
   approvePayment
 );
@@ -75,12 +79,13 @@ app.post(
 app.post(
   '/payments/complete',
   [
-    body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
-    body('transaction_id')
-      .optional()
-      .isString().withMessage('transaction_id must be a string')
+    body('paymentId')
+      .notEmpty().withMessage('paymentId is required')
+      .isString().withMessage('paymentId must be a string')
+      .trim(),
+    body('txid')
+      .notEmpty().withMessage('txid is required')
+      .isString().withMessage('txid must be a string')
       .trim(),
   ],
   completePayment
@@ -217,31 +222,25 @@ describe('Payment Service Integration Tests', () => {
 
   describe('POST /payments/approve', () => {
     const validApprovalData = {
-      payment_id: '123e4567-e89b-12d3-a456-426614174001',
-      pi_payment_id: 'pi_123456',
+      paymentId: 'pi_payment_123456',
+      amount: 10.5,
+      userId: '123e4567-e89b-12d3-a456-426614174000',
     };
 
-    it('should approve a payment successfully', async () => {
-      const mockPayment = {
-        id: validApprovalData.payment_id,
-        user_id: '123e4567-e89b-12d3-a456-426614174000',
-        amount: 10.5,
+    it('should approve a payment successfully and save to DB as pending', async () => {
+      const mockCreatedPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        user_id: validApprovalData.userId,
+        amount: validApprovalData.amount,
         currency: 'PI',
-        status: 'created',
+        status: 'pending',
         payment_method: 'pi',
+        pi_payment_id: validApprovalData.paymentId,
         created_at: new Date(),
         updated_at: new Date(),
       };
 
-      const mockUpdatedPayment = {
-        ...mockPayment,
-        status: 'approved',
-        pi_payment_id: validApprovalData.pi_payment_id,
-        approved_at: new Date(),
-      };
-
-      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
-      mockPrismaClient.payment.update.mockResolvedValue(mockUpdatedPayment);
+      mockPrismaClient.payment.create.mockResolvedValue(mockCreatedPayment);
 
       const response = await request(app)
         .post('/payments/approve')
@@ -249,28 +248,24 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.payment.status).toBe('approved');
+      expect(response.body.data.payment.status).toBe('pending');
+      expect(mockPrismaClient.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          user_id: validApprovalData.userId,
+          amount: validApprovalData.amount,
+          payment_method: 'pi',
+          status: 'pending',
+          pi_payment_id: validApprovalData.paymentId,
+        }),
+      });
     });
 
-    it('should return 404 if payment not found', async () => {
-      mockPrismaClient.payment.findUnique.mockResolvedValue(null);
-
-      const response = await request(app)
-        .post('/payments/approve')
-        .send(validApprovalData);
-
-      expect(response.status).toBe(404);
-      expect(response.body.success).toBe(false);
-      expect(response.body.error.code).toBe('NOT_FOUND');
-    });
-
-    it('should return 409 if payment is not in created status', async () => {
-      const mockPayment = {
-        id: validApprovalData.payment_id,
-        status: 'approved',
-      };
-
-      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+    it('should return 409 if Pi payment ID is already in use', async () => {
+      const prismaError = new PrismaClientKnownRequestError('Unique constraint violated', {
+        code: 'P2002',
+        clientVersion: '5.22.0',
+      });
+      mockPrismaClient.payment.create.mockRejectedValue(prismaError);
 
       const response = await request(app)
         .post('/payments/approve')
@@ -278,11 +273,47 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
-      expect(response.body.error.code).toBe('INVALID_STATUS');
+      expect(response.body.error.code).toBe('DUPLICATE_PI_PAYMENT');
     });
 
-    it('should return 400 for invalid payment_id format', async () => {
-      const invalidData = { ...validApprovalData, payment_id: 'not-a-uuid' };
+    it('should return 400 for missing paymentId', async () => {
+      const invalidData = { amount: 10.5, userId: validApprovalData.userId };
+
+      const response = await request(app)
+        .post('/payments/approve')
+        .send(invalidData);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for missing amount', async () => {
+      const invalidData = { paymentId: validApprovalData.paymentId, userId: validApprovalData.userId };
+
+      const response = await request(app)
+        .post('/payments/approve')
+        .send(invalidData);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for missing userId', async () => {
+      const invalidData = { paymentId: validApprovalData.paymentId, amount: 10.5 };
+
+      const response = await request(app)
+        .post('/payments/approve')
+        .send(invalidData);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for invalid userId format', async () => {
+      const invalidData = { ...validApprovalData, userId: 'not-a-uuid' };
 
       const response = await request(app)
         .post('/payments/approve')
@@ -295,31 +326,28 @@ describe('Payment Service Integration Tests', () => {
 
   describe('POST /payments/complete', () => {
     const validCompletionData = {
-      payment_id: '123e4567-e89b-12d3-a456-426614174001',
-      transaction_id: 'tx_123456',
+      paymentId: 'pi_payment_123456',
+      txid: 'tx_abc123456789',
     };
 
-    it('should complete a payment successfully', async () => {
+    it('should complete a payment successfully and save txid to DB', async () => {
       const mockPayment = {
-        id: validCompletionData.payment_id,
+        id: '123e4567-e89b-12d3-a456-426614174001',
         user_id: '123e4567-e89b-12d3-a456-426614174000',
         amount: 10.5,
         currency: 'PI',
-        status: 'approved',
+        status: 'pending',
         payment_method: 'pi',
-        metadata: {},
+        pi_payment_id: validCompletionData.paymentId,
         created_at: new Date(),
-        approved_at: new Date(),
         updated_at: new Date(),
       };
 
       const mockUpdatedPayment = {
         ...mockPayment,
         status: 'completed',
+        txid: validCompletionData.txid,
         completed_at: new Date(),
-        metadata: {
-          transaction_id: validCompletionData.transaction_id,
-        },
       };
 
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
@@ -332,6 +360,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.data.payment.status).toBe('completed');
+      expect(response.body.data.payment.txid).toBe(validCompletionData.txid);
     });
 
     it('should return 404 if payment not found', async () => {
@@ -346,10 +375,12 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.error.code).toBe('NOT_FOUND');
     });
 
-    it('should return 409 if payment is not in approved status', async () => {
+    it('should return 409 if payment is not in a completable status', async () => {
       const mockPayment = {
-        id: validCompletionData.payment_id,
+        id: '123e4567-e89b-12d3-a456-426614174001',
         status: 'created',
+        user_id: '123e4567-e89b-12d3-a456-426614174000',
+        pi_payment_id: validCompletionData.paymentId,
       };
 
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
@@ -361,6 +392,30 @@ describe('Payment Service Integration Tests', () => {
       expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('INVALID_STATUS');
+    });
+
+    it('should return 400 for missing paymentId', async () => {
+      const invalidData = { txid: validCompletionData.txid };
+
+      const response = await request(app)
+        .post('/payments/complete')
+        .send(invalidData);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for missing txid', async () => {
+      const invalidData = { paymentId: validCompletionData.paymentId };
+
+      const response = await request(app)
+        .post('/payments/complete')
+        .send(invalidData);
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 

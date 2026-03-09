@@ -22,6 +22,7 @@ model Payment {
   payment_method String
   status         String            @default("created")
   pi_payment_id  String?           @unique
+  txid           String?
   metadata       Json?
   created_at     DateTime          @default(now())
   updated_at     DateTime          @updatedAt
