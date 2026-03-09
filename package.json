@@ -1,1 +1,18 @@
-{"name": "tec-core-backend-monorepo","version": "1.0.0","description": "TEC Core Backend Microservices Monorepo","private": true,"workspaces": ["tec-api-gateway","tec-auth-service","tec-wallet-service","tec-payment-service"],"scripts": {"install:all": "npm install","dev:all": "npm run dev --workspaces","build:all": "npm run build --workspaces","test:all": "npm run test --workspaces"}}
+{
+  "name": "tec-core-backend",
+  "version": "1.0.0",
+  "description": "TEC Platform Microservices Backend",
+  "private": true,
+  "workspaces": [
+    "tec-api-gateway",
+    "tec-auth-service",
+    "tec-payment-service",
+    "tec-wallet-service"
+  ],
+  "scripts": {
+    "start": "npm run start --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}
