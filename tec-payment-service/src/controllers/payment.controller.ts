@@ -423,6 +423,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
         data: {
           status: 'completed',
           completed_at: new Date(),
+          transaction_id: transaction_id ?? null,
           metadata: {
             ...getMetadataObject(payment.metadata),
             transaction_id,
@@ -546,6 +547,8 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
         amount: true,
         currency: true,
         payment_method: true,
+        pi_payment_id: true,
+        transaction_id: true,
         created_at: true,
         approved_at: true,
         completed_at: true,
