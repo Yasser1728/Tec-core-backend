@@ -22,13 +22,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { email, username, password } = req.body;
+    const { email, password } = req.body;
 
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ email }, { username }],
-      },
+      where: { email },
     });
 
     if (existingUser) {
@@ -36,7 +34,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         success: false,
         error: {
           code: 'CONFLICT',
-          message: 'User with this email or username already exists',
+          message: 'User with this email already exists',
         },
       });
       return;
@@ -49,7 +47,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const user = await prisma.user.create({
       data: {
         email,
-        username,
         password_hash,
         kyc_status: 'pending',
         role: 'user',
@@ -57,7 +54,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         email: true,
-        username: true,
         kyc_status: true,
         role: true,
         created_at: true,
@@ -314,7 +310,6 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         email: true,
-        username: true,
         kyc_status: true,
         role: true,
         created_at: true,

@@ -12,7 +12,6 @@ const mockUser = {
   id: 'user-uuid-123',
   pi_uid: 'pi-uid-abc',
   pi_username: 'testpiuser',
-  username: 'testpiuser',
   email: null,
   password_hash: null,
   kyc_status: 'pending',
@@ -101,7 +100,6 @@ describe('POST /auth/pi-login', () => {
       id: 'new-user-uuid',
       pi_uid: 'pi-uid-new',
       pi_username: 'newpiuser',
-      username: 'newpiuser',
     });
 
     const res = await request(app)
@@ -115,6 +113,12 @@ describe('POST /auth/pi-login', () => {
     expect(res.body.data.tokens).toHaveProperty('refreshToken');
     expect(res.body.data.user.piUid).toBe('pi-uid-new');
     expect(mockPrisma.user.create).toHaveBeenCalledTimes(1);
+    // username must NOT be passed — column does not exist in production DB
+    expect(mockPrisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ username: expect.anything() }),
+      })
+    );
   });
 
   it('returns 200 for a returning Pi user', async () => {
@@ -153,5 +157,20 @@ describe('POST /auth/pi-login', () => {
         data: expect.objectContaining({ pi_username: updatedUsername }),
       })
     );
+  });
+
+  it('returns 500 DB_SCHEMA_MISMATCH when Prisma throws P2022', async () => {
+    mockFetch(200, { uid: 'pi-uid-new', username: 'newpiuser' });
+    mockPrisma.user.findFirst.mockResolvedValue(null);
+    const p2022Error = Object.assign(new Error('P2022'), { code: 'P2022' });
+    mockPrisma.user.create.mockRejectedValue(p2022Error);
+
+    const res = await request(app)
+      .post('/auth/pi-login')
+      .send({ accessToken: 'valid-pi-token' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('DB_SCHEMA_MISMATCH');
   });
 });

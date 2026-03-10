@@ -74,12 +74,12 @@ export const enable2fa = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Fetch username for the QR code label
+    // Fetch user email for the QR code label
     const userRecord = await prisma.user.findUnique({
       where: { id: userId },
-      select: { username: true },
+      select: { email: true, pi_username: true },
     });
-    const username = userRecord?.username;
+    const label = userRecord?.pi_username || userRecord?.email || userId;
 
     // Check if 2FA is already enabled
     const existing = await prisma.twoFactorAuth.findUnique({
@@ -103,7 +103,7 @@ export const enable2fa = async (req: Request, res: Response): Promise<void> => {
     // Generate OTP auth URL for QR code
     const otpauth = generateURI({
       issuer: 'TEC Platform',
-      label: username || userId,
+      label,
       secret,
     });
 

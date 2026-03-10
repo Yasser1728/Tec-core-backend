@@ -24,7 +24,6 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       select: {
         id: true,
         email: true,
-        username: true,
         kyc_status: true,
         role: true,
         created_at: true,
@@ -78,7 +77,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     }
 
     const userId = req.user?.id;
-    const { email, username } = req.body;
+    const { email } = req.body;
 
     if (!userId) {
       res.status(401).json({
@@ -91,18 +90,13 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Check if email or username is already taken by another user
-    if (email || username) {
+    // Check if email is already taken by another user
+    if (email) {
       const existing = await prisma.user.findFirst({
         where: {
           AND: [
             { id: { not: userId } },
-            {
-              OR: [
-                email ? { email } : {},
-                username ? { username } : {},
-              ].filter(obj => Object.keys(obj).length > 0),
-            },
+            { email },
           ],
         },
       });
@@ -112,16 +106,15 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
           success: false,
           error: {
             code: 'CONFLICT',
-            message: 'Email or username already taken',
+            message: 'Email already taken',
           },
         });
         return;
       }
     }
 
-    const updateData: { email?: string; username?: string } = {};
+    const updateData: { email?: string } = {};
     if (email) updateData.email = email;
-    if (username) updateData.username = username;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -129,7 +122,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       select: {
         id: true,
         email: true,
-        username: true,
         kyc_status: true,
         role: true,
         created_at: true,

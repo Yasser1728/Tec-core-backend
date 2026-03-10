@@ -17,7 +17,6 @@ router.post(
   '/register',
   [
     body('email').isEmail().normalizeEmail(),
-    body('username').isLength({ min: 3, max: 30 }).trim(),
     body('password').isLength({ min: 8 }),
   ],
   register
