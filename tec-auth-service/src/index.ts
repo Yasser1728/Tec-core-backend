@@ -70,6 +70,35 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Pi Platform connectivity check — verifies that the Pi Network API is reachable.
+// Does not expose secrets; only reports success/failure and the resolved base URL.
+app.get('/health/pi', async (_req, res) => {
+  const piBase = process.env.PI_PLATFORM_BASE_URL
+    ?? (process.env.PI_SANDBOX === 'false'
+      ? 'https://api.minepi.com'
+      : 'https://api.sandbox.minepi.com');
+  try {
+    const response = await fetch(`${piBase}/v2/me`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    // Any HTTP response (including 401) means the host is reachable
+    res.json({
+      success: true,
+      piBaseUrl: piBase,
+      httpStatus: response.status,
+    });
+  } catch (err) {
+    const errCode = (err as NodeJS.ErrnoException).code ?? '';
+    const errMsg = (err as Error).message ?? String(err);
+    const isTimeout = (err as Error).name === 'TimeoutError' || errCode === 'ABORT_ERR';
+    res.status(503).json({
+      success: false,
+      piBaseUrl: piBase,
+      error: isTimeout ? 'Pi Platform API did not respond within 5 seconds' : errMsg,
+    });
+  }
+});
+
 // Readiness probe.
 app.get('/ready', (_req, res) => {
   res.json({ status: 'ready', service: 'auth-service', timestamp: new Date().toISOString() });

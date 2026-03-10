@@ -12,7 +12,7 @@ Manages payment lifecycle: creation, approval, completion, cancellation, and fai
 | `JWT_SECRET` | Yes | — | Must match the secret used in auth-service to validate bearer tokens. |
 | `PI_API_KEY` | Yes (Pi) | — | Pi Network developer API key from https://developers.minepi.com |
 | `PI_APP_ID` | Yes (Pi) | — | Pi Network app ID |
-| `PI_SANDBOX` | No | `true` | `true` for Testnet/Sandbox, `false` for Mainnet/Production |
+| `PI_SANDBOX` | No | `true` | `true` for Sandbox, `false` for Mainnet/Production |
 | `CORS_ORIGIN` | No | `*` | Allowed CORS origin. Set to your gateway or frontend URL. |
 | `LOG_LEVEL` | No | `info` | Log level (`error`, `warn`, `info`, `debug`) |
 | `SERVICE_VERSION` | No | `1.0.0` | Version shown in `/health` response |
@@ -115,4 +115,4 @@ npm test
 - All request bodies are validated with `express-validator` before reaching controllers.
 - `payment_method` must be one of: `pi`, `card`, `wallet`.
 - `userId` and `payment_id` fields must be valid UUIDs.
-- `PI_SANDBOX=true` connects to the Pi Testnet — never use production keys in sandbox mode.
+- `PI_SANDBOX=true` connects to the Pi Sandbox — never use production keys in sandbox mode.

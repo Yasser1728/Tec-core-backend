@@ -16,10 +16,12 @@ import { logInfo, logWarn, logError } from '../utils/logger';
 
 // ─── Pi API base URL ──────────────────────────────────────────────────────────
 
-const getPiBaseUrl = (): string =>
-  process.env.PI_SANDBOX === 'false'
+const getPiBaseUrl = (): string => {
+  if (process.env.PI_PLATFORM_BASE_URL) return process.env.PI_PLATFORM_BASE_URL;
+  return process.env.PI_SANDBOX === 'false'
     ? 'https://api.minepi.com'
     : 'https://api.sandbox.minepi.com';
+};
 
 // ─── Timeout helpers ──────────────────────────────────────────────────────────
 
