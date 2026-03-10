@@ -20,6 +20,12 @@ initSentry();
 
 const app: Application = express();
 
+// ─── Trust Railway / reverse-proxy forwarded headers ─────────────────────────
+// Railway (and most PaaS platforms) sit behind a load balancer that sets the
+// X-Forwarded-For header. Without this setting express-rate-limit throws
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and req.ip is undefined.
+app.set('trust proxy', 1);
+
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
 

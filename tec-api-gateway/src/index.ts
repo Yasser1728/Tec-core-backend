@@ -18,6 +18,13 @@ dotenv.config();
 initSentry();
 
 const app: Application = express();
+
+// ─── Trust Railway / reverse-proxy forwarded headers ─────────────────────────
+// Railway (and most PaaS platforms) sit behind a load balancer that sets the
+// X-Forwarded-For header. Without this setting express-rate-limit throws
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and req.ip is undefined.
+app.set('trust proxy', 1);
+
 const PORT = env.PORT;
 const SERVICE_VERSION = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
@@ -71,6 +78,7 @@ const buildCorsOrigin = (): cors.CorsOptions['origin'] => {
       typeof m === 'string' ? m === origin : m.test(origin)
     );
     if (allowed) return callback(null, true);
+    logger.warn('CORS request rejected', { origin, allowlist: entries });
     callback(new Error('Not allowed by CORS'));
   };
 };
