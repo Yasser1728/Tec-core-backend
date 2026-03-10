@@ -3,10 +3,12 @@ import { prisma } from '../config/database';
 import { generateTokens } from '../utils/jwt';
 import { logAudit } from '../utils/logger';
 
-const PI_API_BASE =
-  process.env.PI_SANDBOX === 'false'
+const getPiApiBase = (): string => {
+  if (process.env.PI_PLATFORM_BASE_URL) return process.env.PI_PLATFORM_BASE_URL;
+  return process.env.PI_SANDBOX === 'false'
     ? 'https://api.minepi.com'
     : 'https://api.sandbox.minepi.com';
+};
 
 // POST /auth/pi-login — Authenticate (or register) a user via Pi Network access token
 export const piLogin = async (req: Request, res: Response): Promise<void> => {
@@ -22,7 +24,7 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Step 1: Verify the Pi access token with Pi Network API (with timeout + retry)
-    const PI_API_URL = `${PI_API_BASE}/v2/me`;
+    const PI_API_URL = `${getPiApiBase()}/v2/me`;
     const MAX_RETRIES = 2;
     const RETRY_DELAYS_MS = [1000, 2000];
 
@@ -47,10 +49,20 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
           lastErrorBody
         );
       } catch (networkError) {
-        console.error(
-          `Pi Network API unreachable on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
-          networkError
-        );
+        const errCode = (networkError as NodeJS.ErrnoException).code ?? '';
+        const errMsg = (networkError as Error).message ?? '';
+        const isDns = errCode === 'ENOTFOUND' || errCode === 'EAI_AGAIN' || errMsg.includes('getaddrinfo');
+        if (isDns) {
+          console.error(
+            `Pi Network API DNS resolution failed on attempt ${attempt + 1} (URL: ${PI_API_URL}): ` +
+            `${errMsg}. Check PI_PLATFORM_BASE_URL or DNS connectivity from the host.`
+          );
+        } else {
+          console.error(
+            `Pi Network API unreachable on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
+            networkError
+          );
+        }
       }
       if (attempt < MAX_RETRIES) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
