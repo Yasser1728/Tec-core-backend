@@ -17,7 +17,6 @@ datasource db {
 model User {
   id            String          @id @default(uuid())
   email         String?         @unique
-  username      String          @unique
   password_hash String?
   pi_uid        String?         @unique
   pi_username   String?

@@ -110,7 +110,6 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
         data: {
           pi_uid: verifiedUid,
           pi_username: verifiedUsername || null,
-          username: verifiedUsername || `pi_${verifiedUid}`,
           role: 'user',
           kyc_status: 'pending',
         },
@@ -159,6 +158,22 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error('Pi login error:', error);
+    // Detect Prisma column-not-found error (schema/DB mismatch)
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code: string }).code === 'P2022'
+    ) {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DB_SCHEMA_MISMATCH',
+          message: 'A database configuration error occurred. Please contact support.',
+        },
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Pi authentication failed' },
