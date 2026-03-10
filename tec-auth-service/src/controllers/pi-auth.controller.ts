@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { generateTokens } from '../utils/jwt';
-import { logAudit } from '../utils/logger';
+import { logAudit, logError } from '../utils/logger';
 
 const getPiApiBase = (): string => {
   if (process.env.PI_PLATFORM_BASE_URL) return process.env.PI_PLATFORM_BASE_URL;
@@ -44,24 +44,30 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
         }
         // 5xx: read body once for logging, then retry if attempts remain
         lastErrorBody = await piResponse.text().catch(() => '');
-        console.error(
-          `Pi Network API returned ${piResponse.status} on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
-          lastErrorBody
-        );
+        logError(`Pi Network API returned ${piResponse.status} on attempt ${attempt + 1}`, {
+          url: PI_API_URL,
+          attempt: attempt + 1,
+          responseBody: lastErrorBody,
+        });
       } catch (networkError) {
         const errCode = (networkError as NodeJS.ErrnoException).code ?? '';
         const errMsg = (networkError as Error).message ?? '';
         const isDns = errCode === 'ENOTFOUND' || errCode === 'EAI_AGAIN' || errMsg.includes('getaddrinfo');
         if (isDns) {
-          console.error(
-            `Pi Network API DNS resolution failed on attempt ${attempt + 1} (URL: ${PI_API_URL}): ` +
-            `${errMsg}. Check PI_PLATFORM_BASE_URL or DNS connectivity from the host.`
-          );
+          logError('Pi Network API DNS resolution failed', {
+            url: PI_API_URL,
+            attempt: attempt + 1,
+            errCode,
+            errMsg,
+            hint: 'Check PI_PLATFORM_BASE_URL or DNS connectivity from the host.',
+          });
         } else {
-          console.error(
-            `Pi Network API unreachable on attempt ${attempt + 1} (URL: ${PI_API_URL}):`,
-            networkError
-          );
+          logError('Pi Network API unreachable', {
+            url: PI_API_URL,
+            attempt: attempt + 1,
+            errCode,
+            errMsg,
+          });
         }
       }
       if (attempt < MAX_RETRIES) {
@@ -78,10 +84,11 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (!piResponse.ok) {
-      console.error(
-        `Pi Network API final non-ok response ${piResponse.status} (URL: ${PI_API_URL}):`,
-        lastErrorBody
-      );
+      logError('Pi Network API final non-ok response', {
+        url: PI_API_URL,
+        httpStatus: piResponse.status,
+        responseBody: lastErrorBody,
+      });
       res.status(401).json({
         success: false,
         error: { code: 'INVALID_TOKEN', message: 'Invalid Pi access token' },
@@ -157,7 +164,7 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
       },
     });
   } catch (error) {
-    console.error('Pi login error:', error);
+    logError('Pi login error', { errMsg: error instanceof Error ? error.message : String(error) });
     // Detect Prisma column-not-found error (schema/DB mismatch)
     if (
       typeof error === 'object' &&
