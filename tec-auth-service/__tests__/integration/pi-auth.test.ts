@@ -113,7 +113,10 @@ describe('POST /auth/pi-login', () => {
     expect(res.body.data.isNewUser).toBe(true);
     expect(res.body.data.tokens).toHaveProperty('accessToken');
     expect(res.body.data.tokens).toHaveProperty('refreshToken');
+    expect(res.body.data.user.id).toBe('new-user-uuid');
     expect(res.body.data.user.piUid).toBe('pi-uid-new');
+    // snake_case pi_uid must NOT be in the response to avoid frontend confusion
+    expect(res.body.data.user).not.toHaveProperty('pi_uid');
     expect(mockPrisma.user.create).toHaveBeenCalledTimes(1);
     // username must NOT be passed — column does not exist in production DB
     expect(mockPrisma.user.create).toHaveBeenCalledWith(
@@ -135,7 +138,10 @@ describe('POST /auth/pi-login', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.isNewUser).toBe(false);
     expect(res.body.data.tokens).toHaveProperty('accessToken');
+    expect(res.body.data.user.id).toBe(mockUser.id);
     expect(res.body.data.user.piUid).toBe(mockUser.pi_uid);
+    // snake_case pi_uid must NOT be in the response to avoid frontend confusion
+    expect(res.body.data.user).not.toHaveProperty('pi_uid');
     expect(mockPrisma.user.create).not.toHaveBeenCalled();
   });
 
@@ -213,7 +219,10 @@ describe('POST /auth/pi-login (sandbox mode)', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
+    expect(res.body.data.user.id).toBe('sb-user-uuid');
     expect(res.body.data.user.piUid).toBe('sandbox-pi-uid');
+    // snake_case pi_uid must NOT be in the response to avoid frontend confusion
+    expect(res.body.data.user).not.toHaveProperty('pi_uid');
     expect(res.body.data.isNewUser).toBe(true);
   });
 
@@ -232,6 +241,10 @@ describe('POST /auth/pi-login (sandbox mode)', () => {
     expect(res.body.success).toBe(true);
     // uid was derived via hash — we just confirm the response is well-formed
     expect(res.body.data.tokens).toHaveProperty('accessToken');
+    // The database id (UUID) must be returned, not the derived sandbox pi_uid
+    expect(res.body.data.user.id).toBe('opaque-sb-uuid');
+    // snake_case pi_uid must NOT be in the response
+    expect(res.body.data.user).not.toHaveProperty('pi_uid');
     expect(mockPrisma.user.create).toHaveBeenCalledTimes(1);
     const createCall = mockPrisma.user.create.mock.calls[0][0];
     expect(createCall.data.pi_uid).toMatch(/^sandbox_[0-9a-f]{16}$/);
