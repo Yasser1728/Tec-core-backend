@@ -193,14 +193,19 @@ export const piLogin = async (req: Request, res: Response): Promise<void> => {
 
     logAudit('PI_LOGIN', { userId: user.id, piUid: verifiedUid, isNewUser, ipAddress: req.ip });
 
-    // Step 5: Return response (omit password_hash)
-    const { password_hash: _password_hash, ...userWithoutPassword } = user;
-
+    // Step 5: Return response (omit password_hash; use explicit shape so that
+    // id (the database UUID) is never confused with piUid (the Pi Network uid,
+    // which may be a sandbox_xxx string in Sandbox/Testnet mode).
     res.status(isNewUser ? 201 : 200).json({
       success: true,
       data: {
         user: {
-          ...userWithoutPassword,
+          id: user.id,
+          email: user.email,
+          kyc_status: user.kyc_status,
+          role: user.role,
+          created_at: user.created_at,
+          updated_at: user.updated_at,
           piUsername: user.pi_username,
           piUid: user.pi_uid,
         },
