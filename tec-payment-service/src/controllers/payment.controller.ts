@@ -222,19 +222,26 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
     }
 
     // ─── Pi Network: approve on Pi side before persisting ─────────────────
+    // In Sandbox/Testnet mode (PI_SANDBOX=true), skip the Pi API call.
+    // The Pi Browser SDK handles payment verification client-side in Testnet.
+    // Only call the Pi API in Mainnet (PI_SANDBOX=false or unset).
     if (payment.payment_method === 'pi' && pi_payment_id) {
-      try {
-        await piApprovePayment(pi_payment_id);
-      } catch (piErr) {
-        if (piErr instanceof PiApiError) {
-          logWarn('Pi API approve error', { payment_id, code: piErr.code, message: piErr.message });
-          res.status(piErr.httpStatus).json({
-            success: false,
-            error: { code: piErr.code, message: piErr.message },
-          });
-          return;
+      if (env.PI_SANDBOX === 'true') {
+        logInfo('Sandbox mode: skipping Pi API approve call', { payment_id, pi_payment_id });
+      } else {
+        try {
+          await piApprovePayment(pi_payment_id);
+        } catch (piErr) {
+          if (piErr instanceof PiApiError) {
+            logWarn('Pi API approve error', { payment_id, code: piErr.code, message: piErr.message });
+            res.status(piErr.httpStatus).json({
+              success: false,
+              error: { code: piErr.code, message: piErr.message },
+            });
+            return;
+          }
+          throw piErr;
         }
-        throw piErr;
       }
     }
 
@@ -375,28 +382,34 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
-      if (!env.PI_API_KEY || !env.PI_APP_ID) {
-        res.status(503).json({
-          success: false,
-          error: {
-            code: 'SERVICE_NOT_CONFIGURED',
-            message: 'Pi Network credentials are not configured. Contact the administrator.',
-          },
-        });
-        return;
-      }
-      try {
-        await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
-      } catch (piErr) {
-        if (piErr instanceof PiApiError) {
-          logWarn('Pi API complete error', { payment_id, code: piErr.code, message: piErr.message });
-          res.status(piErr.httpStatus).json({
+      if (env.PI_SANDBOX === 'true') {
+        // Sandbox/Testnet mode: skip Pi API complete call.
+        // Pi Browser SDK handles on-chain verification in Testnet.
+        logInfo('Sandbox mode: skipping Pi API complete call', { payment_id, pi_payment_id: preFlightPayment.pi_payment_id });
+      } else {
+        if (!env.PI_API_KEY || !env.PI_APP_ID) {
+          res.status(503).json({
             success: false,
-            error: { code: piErr.code, message: piErr.message },
+            error: {
+              code: 'SERVICE_NOT_CONFIGURED',
+              message: 'Pi Network credentials are not configured. Contact the administrator.',
+            },
           });
           return;
         }
-        throw piErr;
+        try {
+          await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
+        } catch (piErr) {
+          if (piErr instanceof PiApiError) {
+            logWarn('Pi API complete error', { payment_id, code: piErr.code, message: piErr.message });
+            res.status(piErr.httpStatus).json({
+              success: false,
+              error: { code: piErr.code, message: piErr.message },
+            });
+            return;
+          }
+          throw piErr;
+        }
       }
     }
     // ─── end Pi Network pre-flight ─────────────────────────────────────────
