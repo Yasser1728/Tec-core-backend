@@ -6,6 +6,8 @@ import { body } from 'express-validator';
 process.env.JWT_SECRET = 'test-jwt-secret-for-pi-auth-tests';
 process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret-for-pi-auth-tests';
 process.env.NODE_ENV = 'test';
+// Existing tests exercise the Mainnet path (they mock fetch); disable sandbox mode.
+process.env.PI_SANDBOX = 'false';
 
 // ── Mock Prisma client ───────────────────────────────────────────────────────
 const mockUser = {
@@ -172,5 +174,66 @@ describe('POST /auth/pi-login', () => {
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
     expect(res.body.error.code).toBe('DB_SCHEMA_MISMATCH');
+  });
+});
+
+// ── Sandbox / Testnet mode tests ─────────────────────────────────────────────
+describe('POST /auth/pi-login (sandbox mode)', () => {
+  const origSandbox = process.env.PI_SANDBOX;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.refreshToken.create.mockResolvedValue({});
+    process.env.PI_SANDBOX = 'true';
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    process.env.PI_SANDBOX = origSandbox;
+  });
+
+  it('decodes a valid Pi JWT and logs in without calling fetch', async () => {
+    // Build a minimal JWT-shaped token with uid and username in the payload
+    const payload = Buffer.from(JSON.stringify({ uid: 'sandbox-pi-uid', username: 'sbuser' })).toString('base64url');
+    const fakeJwt = `header.${payload}.sig`;
+
+    mockPrisma.user.findFirst.mockResolvedValue(null);
+    mockPrisma.user.create.mockResolvedValue({
+      ...mockUser,
+      id: 'sb-user-uuid',
+      pi_uid: 'sandbox-pi-uid',
+      pi_username: 'sbuser',
+    });
+
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy;
+
+    const res = await request(app).post('/auth/pi-login').send({ accessToken: fakeJwt });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.user.piUid).toBe('sandbox-pi-uid');
+    expect(res.body.data.isNewUser).toBe(true);
+  });
+
+  it('derives a stable sandbox uid for non-JWT opaque tokens', async () => {
+    mockPrisma.user.findFirst.mockResolvedValue(null);
+    mockPrisma.user.create.mockResolvedValue({
+      ...mockUser,
+      id: 'opaque-sb-uuid',
+      pi_uid: 'sandbox_opaque',
+      pi_username: 'sandbox_user',
+    });
+
+    const res = await request(app).post('/auth/pi-login').send({ accessToken: 'opaque-token-no-dots' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    // uid was derived via hash — we just confirm the response is well-formed
+    expect(res.body.data.tokens).toHaveProperty('accessToken');
+    expect(mockPrisma.user.create).toHaveBeenCalledTimes(1);
+    const createCall = mockPrisma.user.create.mock.calls[0][0];
+    expect(createCall.data.pi_uid).toMatch(/^sandbox_[0-9a-f]{16}$/);
   });
 });
