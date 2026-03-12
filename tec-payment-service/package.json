@@ -2,11 +2,11 @@
   "name": "tec-payment-service",
   "version": "1.0.0",
   "description": "TEC Platform Payment Service - Multi-method payment processing",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest",
