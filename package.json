@@ -12,7 +12,8 @@
   "scripts": {
     "start": "npm run start --workspace=tec-api-gateway",
     "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run prisma:generate && npm run build --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
