@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { validationResult, ValidationError } from 'express-validator';
 import { prisma } from '../config/database';
+import { Prisma } from '@prisma/client';
 import { 
   PrismaClientKnownRequestError,
   PrismaClientInitializationError,
@@ -11,6 +12,8 @@ import { logInfo, logWarn, logError } from '../utils/logger';
 import { piApprovePayment, piCompletePayment, PiApiError } from '../services/payment.service';
 import { creditTecWallet } from '../services/wallet.service';
 import { env } from '../config/env';
+
+type TransactionClient = Prisma.TransactionClient;
 
 // Helper function to safely get metadata as an object
 const getMetadataObject = (metadata: unknown): Record<string, unknown> => {
@@ -221,10 +224,6 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // ─── Pi Network: approve on Pi side before persisting ─────────────────
-    // In Sandbox/Testnet mode (PI_SANDBOX=true), skip the Pi API call.
-    // The Pi Browser SDK handles payment verification client-side in Testnet.
-    // Only call the Pi API in Mainnet (PI_SANDBOX=false or unset).
     if (payment.payment_method === 'pi' && pi_payment_id) {
       if (env.PI_SANDBOX === 'true') {
         logInfo('Sandbox mode: skipping Pi API approve call', { payment_id, pi_payment_id });
@@ -342,11 +341,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     
     logInfo('Completing payment', { payment_id, transaction_id, requestId: req.requestId });
 
-    // ─── Pi Network: pre-flight state check + Pi API call ─────────────────
-    // Fetch payment details outside the DB transaction so that a potentially
-    // long-running Pi API call does not hold an open DB transaction.
-    // A secondary state check inside the subsequent $transaction guards against
-    // concurrent state changes that may occur while the Pi API call is in flight.
     const preFlightPayment = await prisma.payment.findUnique({
       where: { id: payment_id },
       select: { status: true, payment_method: true, pi_payment_id: true, user_id: true },
@@ -383,8 +377,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
 
     if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
       if (env.PI_SANDBOX === 'true') {
-        // Sandbox/Testnet mode: skip Pi API complete call.
-        // Pi Browser SDK handles on-chain verification in Testnet.
         logInfo('Sandbox mode: skipping Pi API complete call', { payment_id, pi_payment_id: preFlightPayment.pi_payment_id });
       } else {
         if (!env.PI_API_KEY || !env.PI_APP_ID) {
@@ -412,9 +404,8 @@ export const completePayment = async (req: Request, res: Response): Promise<void
         }
       }
     }
-    // ─── end Pi Network pre-flight ─────────────────────────────────────────
 
-    const updatedPayment = await prisma.$transaction(async (tx) => {
+    const updatedPayment = await prisma.$transaction(async (tx: TransactionClient) => {
       const payment = await tx.payment.findUnique({
         where: { id: payment_id },
       });
@@ -462,9 +453,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       data: { payment: updatedPayment },
     });
 
-    // Fire-and-forget: credit TEC tokens for Pi payments (1 Pi = 0.1 TEC).
-    // Errors are logged but never propagate — wallet unavailability must not
-    // block or roll back an already-confirmed payment.
     if (updatedPayment.payment_method === 'pi') {
       void creditTecWallet(
         updatedPayment.user_id,
@@ -650,7 +638,7 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
     
     logInfo('Cancelling payment', { payment_id, requestId: req.requestId });
 
-    const updatedPayment = await prisma.$transaction(async (tx) => {
+    const updatedPayment = await prisma.$transaction(async (tx: TransactionClient) => {
       const payment = await tx.payment.findUnique({
         where: { id: payment_id },
       });
@@ -1020,4 +1008,3 @@ export const triggerReconciliation = async (req: Request, res: Response): Promis
     });
   }
 };
-
