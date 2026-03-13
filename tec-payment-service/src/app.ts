@@ -138,6 +138,8 @@ const WEBHOOK_PATHS = new Set([
   '/webhook/incomplete',
   '/payments/webhook/incomplete',
   '/api/payments/webhook/incomplete',
+  '/payments/resolve-incomplete',
+  '/api/payments/resolve-incomplete',
 ]);
 app.use((req, _res, next) => {
   if (WEBHOOK_PATHS.has(req.path)) return next();

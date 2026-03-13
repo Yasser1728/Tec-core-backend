@@ -26,6 +26,7 @@ import {
   cancelPayment,
   failPayment,
   getPaymentStatus,
+  resolveIncompletePayment,
 } from '../../src/controllers/payment.controller';
 
 // Test app setup
@@ -115,6 +116,17 @@ app.get('/payments/:id/status', [
     .notEmpty().withMessage('id is required')
     .isUUID().withMessage('id must be a valid UUID')
 ], getPaymentStatus);
+
+app.post(
+  '/payments/resolve-incomplete',
+  [
+    body('pi_payment_id')
+      .notEmpty().withMessage('pi_payment_id is required')
+      .isString().withMessage('pi_payment_id must be a string')
+      .trim(),
+  ],
+  resolveIncompletePayment
+);
 
 describe('Payment Service Integration Tests', () => {
   beforeEach(() => {
@@ -643,6 +655,149 @@ describe('Payment Service Integration Tests', () => {
       const response = await request(app)
         .post('/payments/fail')
         .send({ payment_id: 'not-a-uuid' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('POST /payments/resolve-incomplete', () => {
+    const piPaymentId = 'pi_payment_abc123';
+
+    it('should return not_found when payment does not exist', async () => {
+      mockPrismaClient.payment.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('not_found');
+    });
+
+    it('should cancel a created payment and return action: cancelled', async () => {
+      const mockPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        user_id: '123e4567-e89b-12d3-a456-426614174000',
+        status: 'created',
+        payment_method: 'pi',
+        pi_payment_id: piPaymentId,
+        metadata: {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+      mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'cancelled' });
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('cancelled');
+      expect(mockPrismaClient.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockPayment.id },
+          data: expect.objectContaining({ status: 'cancelled' }),
+        }),
+      );
+    });
+
+    it('should complete an approved payment and return action: completed', async () => {
+      const mockPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        user_id: '123e4567-e89b-12d3-a456-426614174000',
+        status: 'approved',
+        payment_method: 'pi',
+        pi_payment_id: piPaymentId,
+        metadata: {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+
+      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+      mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'completed' });
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('completed');
+      expect(mockPrismaClient.payment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockPayment.id },
+          data: expect.objectContaining({ status: 'completed' }),
+        }),
+      );
+    });
+
+    it('should return already_resolved for a completed payment', async () => {
+      const mockPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        status: 'completed',
+        payment_method: 'pi',
+        pi_payment_id: piPaymentId,
+      };
+
+      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('already_resolved');
+    });
+
+    it('should return already_resolved for a cancelled payment', async () => {
+      const mockPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        status: 'cancelled',
+        payment_method: 'pi',
+        pi_payment_id: piPaymentId,
+      };
+
+      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('already_resolved');
+    });
+
+    it('should return already_resolved for a failed payment', async () => {
+      const mockPayment = {
+        id: '123e4567-e89b-12d3-a456-426614174001',
+        status: 'failed',
+        payment_method: 'pi',
+        pi_payment_id: piPaymentId,
+      };
+
+      mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
+
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({ pi_payment_id: piPaymentId });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.action).toBe('already_resolved');
+    });
+
+    it('should return 400 for missing pi_payment_id', async () => {
+      const response = await request(app)
+        .post('/payments/resolve-incomplete')
+        .send({});
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);

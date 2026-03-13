@@ -990,6 +990,166 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
   }
 };
 
+// Resolve an incomplete payment by Pi payment ID (called from frontend handleIncompletePayment)
+export const resolveIncompletePayment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logWarn('ResolveIncompletePayment validation failed', { errors: errors.array(), body: req.body });
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid input data. Please check the request parameters.',
+          details: errors.array().map((err: ValidationError) => ({
+            field: 'path' in err ? err.path : 'unknown',
+            message: err.msg,
+            value: 'value' in err ? err.value : undefined,
+          })),
+        },
+      });
+      return;
+    }
+
+    const { pi_payment_id } = req.body;
+    logInfo('Resolving incomplete payment', { pi_payment_id, requestId: req.requestId });
+
+    const payment = await prisma.payment.findUnique({
+      where: { pi_payment_id },
+    });
+
+    if (!payment) {
+      logInfo('No payment found for pi_payment_id — treating as not_found', { pi_payment_id });
+      res.json({ success: true, data: { action: 'not_found' } });
+      return;
+    }
+
+    const TERMINAL_STATUSES = ['completed', 'cancelled', 'failed'];
+    if (TERMINAL_STATUSES.includes(payment.status)) {
+      logInfo('Payment already in terminal status', { pi_payment_id, paymentId: payment.id, status: payment.status });
+      res.json({ success: true, data: { action: 'already_resolved' } });
+      return;
+    }
+
+    if (payment.status === 'created') {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'cancelled',
+          cancelled_at: new Date(),
+        },
+      });
+      logInfo('Stale created payment cancelled', { pi_payment_id, paymentId: payment.id });
+      void createAuditLog({
+        userId: payment.user_id,
+        paymentId: payment.id,
+        eventType: 'PAYMENT_CANCELLED',
+        metadata: { reason: 'resolve_incomplete', pi_payment_id },
+        ipAddress: getClientIp(req),
+        requestId: req.requestId,
+      });
+      res.json({ success: true, data: { action: 'cancelled' } });
+      return;
+    }
+
+    if (payment.status === 'approved') {
+      if (payment.payment_method === 'pi' && payment.pi_payment_id) {
+        if (env.PI_SANDBOX === 'true') {
+          logInfo('Sandbox mode: skipping Pi API complete call for resolve-incomplete', { pi_payment_id, paymentId: payment.id });
+        } else {
+          if (!env.PI_API_KEY || !env.PI_APP_ID) {
+            res.status(503).json({
+              success: false,
+              error: {
+                code: 'SERVICE_NOT_CONFIGURED',
+                message: 'Pi Network credentials are not configured. Contact the administrator.',
+              },
+            });
+            return;
+          }
+          try {
+            // transaction_id is unavailable here (the original onReadyForServerCompletion
+            // callback was never completed), so we pass undefined and let Pi Network
+            // complete the payment without a client-side txid.
+            await piCompletePayment(payment.pi_payment_id, undefined);
+          } catch (piErr) {
+            if (piErr instanceof PiApiError) {
+              logWarn('Pi API complete error during resolve-incomplete', { pi_payment_id, paymentId: payment.id, code: piErr.code, message: piErr.message });
+              await prisma.payment.update({
+                where: { id: payment.id },
+                data: {
+                  status: 'failed',
+                  failed_at: new Date(),
+                  metadata: {
+                    ...getMetadataObject(payment.metadata),
+                    failure_reason: piErr.message,
+                  },
+                },
+              });
+              void createAuditLog({
+                userId: payment.user_id,
+                paymentId: payment.id,
+                eventType: 'PAYMENT_FAILED',
+                metadata: { reason: 'resolve_incomplete_pi_error', pi_payment_id, error: piErr.message },
+                ipAddress: getClientIp(req),
+                requestId: req.requestId,
+              });
+              res.json({ success: true, data: { action: 'failed' } });
+              return;
+            }
+            throw piErr;
+          }
+        }
+      }
+
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'completed',
+          completed_at: new Date(),
+        },
+      });
+      logInfo('Approved payment completed during resolve-incomplete', { pi_payment_id, paymentId: payment.id });
+      void createAuditLog({
+        userId: payment.user_id,
+        paymentId: payment.id,
+        eventType: 'PAYMENT_CONFIRMED',
+        metadata: { reason: 'resolve_incomplete', pi_payment_id },
+        ipAddress: getClientIp(req),
+        requestId: req.requestId,
+      });
+      res.json({ success: true, data: { action: 'completed' } });
+      return;
+    }
+
+    // Fallback: unexpected status — treat as already resolved
+    logWarn('Unexpected payment status in resolveIncompletePayment', { pi_payment_id, paymentId: payment.id, status: payment.status });
+    res.json({ success: true, data: { action: 'already_resolved' } });
+  } catch (error) {
+    logError('ResolveIncompletePayment error', { error: (error as Error).message });
+
+    if (error instanceof PrismaClientInitializationError ||
+        error instanceof PrismaClientRustPanicError) {
+      res.status(503).json({
+        success: false,
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database connection failed. Please check DATABASE_URL configuration.',
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to resolve incomplete payment',
+      },
+    });
+  }
+};
+
 // Trigger stale payment reconciliation (internal/admin)
 export const triggerReconciliation = async (req: Request, res: Response): Promise<void> => {
   try {
