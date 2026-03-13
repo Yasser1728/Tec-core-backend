@@ -34,16 +34,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies (--ignore-scripts skips postinstall/prisma generate;
-# the generated client is already copied from the builder stage's node_modules/.prisma)
+# Install only production dependencies (prisma is now in dependencies so the CLI
+# is available at runtime for `npx prisma migrate deploy` in the entrypoint).
 RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+
+# Copy Prisma schema first so `prisma generate` can find it
+COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/migrations ./prisma/migrations
+
+# Regenerate Prisma client in the production node_modules to ensure the correct
+# binary for this image's architecture/OS is used.
+RUN npx prisma generate
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
-# Copy the generated Prisma client from builder (default node_modules/.prisma location)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY prisma/schema.prisma ./prisma/schema.prisma
-COPY prisma/migrations ./prisma/migrations
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
