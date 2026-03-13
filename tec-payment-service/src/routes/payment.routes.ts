@@ -9,6 +9,7 @@ import {
   getPaymentStatus,
   getPaymentHistory,
   triggerReconciliation,
+  resolveIncompletePayment,
 } from '../controllers/payment.controller';
 import { handleIncompletePayment } from '../controllers/webhook.controller';
 import {
@@ -125,6 +126,20 @@ router.post(
       .trim(),
   ],
   failPayment
+);
+
+// POST /payments/resolve-incomplete - Resolve an incomplete Pi payment from a previous session
+router.post(
+  '/resolve-incomplete',
+  authenticate,
+  paymentRateLimiter,
+  [
+    body('pi_payment_id')
+      .notEmpty().withMessage('pi_payment_id is required')
+      .isString().withMessage('pi_payment_id must be a string')
+      .trim(),
+  ],
+  resolveIncompletePayment
 );
 
 // GET /payments/history - Get payment history for authenticated user
