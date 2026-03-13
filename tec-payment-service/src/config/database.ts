@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 /** Typed global for singleton reuse across hot-reloads in non-production envs. */
 type GlobalWithPrisma = typeof globalThis & { _prismaPayment?: PrismaClient };
