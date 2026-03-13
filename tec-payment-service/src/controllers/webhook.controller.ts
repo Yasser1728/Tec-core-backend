@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'crypto';
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
+import { Prisma } from '@prisma/client';
 import {
   PrismaClientKnownRequestError,
   PrismaClientInitializationError,
@@ -10,6 +11,8 @@ import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
 import { piCompletePayment, PiApiError } from '../services/payment.service';
 
+type TransactionClient = Prisma.TransactionClient;
+
 // Helper to get client IP
 const getClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'] as string | undefined;
@@ -17,14 +20,6 @@ const getClientIp = (req: Request): string => {
   return req.socket.remoteAddress ?? 'unknown';
 };
 
-/**
- * Validates that the incoming request carries the Pi API key either via:
- *   Authorization: Key <PI_API_KEY>
- * or the custom header:
- *   x-pi-key: <PI_API_KEY>
- *
- * Uses a constant-time comparison to prevent timing attacks.
- */
 const validatePiApiKey = (req: Request): boolean => {
   const expected = process.env.PI_API_KEY;
   if (!expected) return false;
@@ -46,7 +41,6 @@ const validatePiApiKey = (req: Request): boolean => {
         // length mismatch guard already handled above
       }
     }
-    // Also accept bare key value in x-pi-key header
     if (candidate !== authHeader && candidate.length === expected.length) {
       try {
         if (timingSafeEqual(Buffer.from(candidate), Buffer.from(expected))) return true;
@@ -59,18 +53,7 @@ const validatePiApiKey = (req: Request): boolean => {
   return false;
 };
 
-/**
- * POST /payments/webhook/incomplete
- *
- * Pi Network calls this endpoint when it detects a payment that was approved
- * on-chain but never completed by the developer (e.g. the user closed Pi
- * Browser before `onReadyForServerCompletion` fired).
- *
- * Auth: Pi API key via `Authorization: Key <PI_API_KEY>` or `x-pi-key` header.
- * No JWT required — the caller is Pi Network, not a user.
- */
 export const handleIncompletePayment = async (req: Request, res: Response): Promise<void> => {
-  // ─── Auth: validate Pi API key ──────────────────────────────────────────────
   if (!validatePiApiKey(req)) {
     res.status(401).json({
       success: false,
@@ -81,7 +64,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
 
   const piPaymentId: string | undefined = req.body?.payment?.identifier as string | undefined;
 
-  // ─── Audit every received webhook ──────────────────────────────────────────
   logInfo('Webhook received: incomplete payment', { piPaymentId, requestId: req.requestId });
 
   if (!piPaymentId || typeof piPaymentId !== 'string') {
@@ -98,7 +80,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       where: { pi_payment_id: piPaymentId },
     });
 
-    // Write audit log regardless of whether we found the payment
     void createAuditLog({
       userId: payment?.user_id ?? 'unknown',
       paymentId: payment?.id,
@@ -114,7 +95,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       return;
     }
 
-    // ─── Idempotent: already completed or cancelled ─────────────────────────
     if (payment.status === 'completed' || payment.status === 'cancelled') {
       logInfo('Webhook: payment already in terminal status, no action needed', {
         paymentId: payment.id,
@@ -125,7 +105,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       return;
     }
 
-    // ─── Only process payments stuck in `approved` status ───────────────────
     if (payment.status !== 'approved') {
       logWarn('Webhook: payment in unexpected status, skipping', {
         paymentId: payment.id,
@@ -136,7 +115,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       return;
     }
 
-    // ─── Call Pi Network to complete the payment ─────────────────────────────
     const txId: string | undefined = req.body?.payment?.transaction?.txid ?? undefined;
 
     try {
@@ -167,10 +145,7 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       throw piErr;
     }
 
-    // ─── Mark as completed in DB (atomic) ───────────────────────────────────
-    // Use $transaction with a secondary state check to guard against concurrent
-    // state changes that may have occurred while the Pi API call was in flight.
-    const updatedPayment = await prisma.$transaction(async (tx) => {
+    const updatedPayment = await prisma.$transaction(async (tx: TransactionClient) => {
       const current = await tx.payment.findUnique({
         where: { id: payment.id },
       });
@@ -203,8 +178,6 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
     });
 
     if (!updatedPayment) {
-      // State changed concurrently — still return 200 to Pi Network
-      // so it doesn't retry the webhook.
       res.status(200).json({ success: true });
       return;
     }
@@ -245,3 +218,4 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
     });
   }
 };
+ 
