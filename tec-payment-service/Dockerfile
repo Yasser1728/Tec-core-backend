@@ -16,7 +16,7 @@ RUN npm ci --ignore-scripts
 # Copy source code
 COPY . .
 
-# Generate Prisma client (custom output: ./prisma/client)
+# Generate Prisma client (default output: node_modules/.prisma/client)
 RUN npx prisma generate
 
 # Build TypeScript
@@ -35,13 +35,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3
 COPY package*.json ./
 
 # Install only production dependencies (--ignore-scripts skips postinstall/prisma generate;
-# the generated client is already copied from the builder stage below)
+# the generated client is already copied from the builder stage's node_modules/.prisma)
 RUN npm ci --only=production --ignore-scripts && npm cache clean --force
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
-# Copy the generated Prisma client (required at runtime)
-COPY --from=builder /app/prisma/client ./prisma/client
+# Copy the generated Prisma client from builder (default node_modules/.prisma location)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY prisma/migrations ./prisma/migrations
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
