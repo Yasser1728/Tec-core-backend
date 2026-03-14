@@ -51,7 +51,7 @@ export class PiApiError extends Error {
     super(message);
     this.name = 'PiApiError';
   }
-};
+}
 
 /* =========================================================
    Internal fetch with retry + exponential backoff + circuit breaker
@@ -120,7 +120,7 @@ const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 
 /* =========================================================
    Approve Payment
 ========================================================= */
-export const piApprovePayment = async (piPaymentId: string) => {
+export const piApprovePayment = async (piPaymentId: string): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/approve`;
   logInfo('Calling Pi API: approve', { piPaymentId });
   await callPiApi(url, undefined, APPROVE_TIMEOUT);
@@ -130,9 +130,19 @@ export const piApprovePayment = async (piPaymentId: string) => {
 /* =========================================================
    Complete Payment
 ========================================================= */
-export const piCompletePayment = async (piPaymentId: string, txId?: string) => {
+export const piCompletePayment = async (piPaymentId: string, txId?: string): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/complete`;
   logInfo('Calling Pi API: complete', { piPaymentId, txId });
   await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT);
   logInfo('Pi API complete succeeded', { piPaymentId, txId });
+};
+
+/* =========================================================
+   Test Utilities (exported for testing only)
+========================================================= */
+
+/** @internal — use only in tests to reset circuit breaker state */
+export const _resetCircuitBreaker = (): void => {
+  circuitFailures = 0;
+  circuitOpenUntil = 0;
 };
