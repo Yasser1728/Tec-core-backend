@@ -12,6 +12,7 @@ import { errorMiddleware } from './middlewares/error.middleware';
 import { initIdempotencyStore } from './middlewares/idempotency.middleware';
 import { validateInternalKey } from './middlewares/internal-auth';
 import { logger } from './utils/logger';
+import { prisma } from './config/database';
 
 dotenv.config();
 
@@ -84,14 +85,35 @@ app.use(
   })
 );
 
-app.get('/health', (_req, res) => {
+// ─── Health check (includes DB connectivity) ─────────────────────────────────
+app.get('/health', async (_req, res) => {
   const uptime = Math.floor((Date.now() - serviceStartTime) / 1000);
-  res.json({
-    status: 'ok',
+
+  let dbStatus = 'ok';
+  let dbLatencyMs: number | null = null;
+
+  try {
+    const dbStart = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    dbLatencyMs = Date.now() - dbStart;
+  } catch {
+    dbStatus = 'error';
+  }
+
+  const isHealthy = dbStatus === 'ok';
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'degraded',
     service: 'payment-service',
     timestamp: new Date().toISOString(),
     uptime,
     version: SERVICE_VERSION,
+    checks: {
+      database: {
+        status: dbStatus,
+        latencyMs: dbLatencyMs,
+      },
+    },
   });
 });
 
