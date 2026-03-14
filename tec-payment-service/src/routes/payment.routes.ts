@@ -25,7 +25,7 @@ import {
 
 import { idempotency } from '../middlewares/idempotency.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
-import { validateInternalKey } from '../middleware/internal-auth';
+import { validateInternalKey } from '../middlewares/internal-auth';
 
 const router = Router();
 
@@ -35,7 +35,6 @@ const router = Router();
  * =========================================================
  */
 
-// Pi incomplete payment webhook
 router.post(
   '/webhook/incomplete',
   paymentRateLimiter,
