@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
+
 import {
   createPayment,
   approvePayment,
@@ -11,7 +12,9 @@ import {
   triggerReconciliation,
   resolveIncompletePayment,
 } from '../controllers/payment.controller';
+
 import { handleIncompletePayment } from '../controllers/webhook.controller';
+
 import {
   initiateRateLimiter,
   confirmRateLimiter,
@@ -19,17 +22,32 @@ import {
   statusRateLimiter,
   paymentRateLimiter,
 } from '../middlewares/rate-limit.middleware';
+
 import { idempotency } from '../middlewares/idempotency.middleware';
 import { authenticate } from '../middlewares/jwt.middleware';
 import { validateInternalKey } from '../middleware/internal-auth';
 
 const router = Router();
 
-// POST /payments/webhook/incomplete — Pi Network incomplete-payment notification
-// No JWT or internal-key auth; validated via PI_API_KEY inside the controller.
-router.post('/webhook/incomplete', handleIncompletePayment);
+/**
+ * =========================================================
+ * Pi Network Webhooks
+ * =========================================================
+ */
 
-// POST /payments/create - Initiate a new payment
+// Pi incomplete payment webhook
+router.post(
+  '/webhook/incomplete',
+  paymentRateLimiter,
+  handleIncompletePayment
+);
+
+/**
+ * =========================================================
+ * Payment Creation
+ * =========================================================
+ */
+
 router.post(
   '/create',
   authenticate,
@@ -37,47 +55,73 @@ router.post(
   idempotency,
   [
     body('userId')
-      .notEmpty().withMessage('userId is required')
-      .isUUID().withMessage('userId must be a valid UUID'),
+      .notEmpty()
+      .withMessage('userId is required')
+      .isUUID()
+      .withMessage('userId must be a valid UUID'),
+
     body('amount')
-      .notEmpty().withMessage('amount is required')
-      .isFloat({ min: 0.01 }).withMessage('amount must be greater than 0'),
+      .notEmpty()
+      .withMessage('amount is required')
+      .isFloat({ min: 0.01 })
+      .withMessage('amount must be greater than 0'),
+
     body('currency')
       .optional()
-      .isString().withMessage('currency must be a string')
-      .isLength({ min: 2, max: 3 }).withMessage('currency must be 2-3 characters')
+      .isString()
+      .isLength({ min: 2, max: 3 })
+      .withMessage('currency must be 2-3 characters')
       .toUpperCase(),
+
     body('payment_method')
-      .notEmpty().withMessage('payment_method is required')
+      .notEmpty()
+      .withMessage('payment_method is required')
       .toLowerCase()
-      .isIn(['pi', 'card', 'wallet']).withMessage('payment_method must be one of: pi, card, wallet'),
+      .isIn(['pi', 'card', 'wallet'])
+      .withMessage('payment_method must be pi, card, or wallet'),
+
     body('metadata')
       .optional()
-      .isObject().withMessage('metadata must be a valid JSON object'),
+      .isObject()
+      .withMessage('metadata must be JSON'),
   ],
   createPayment
 );
 
-// POST /payments/approve - Approve a payment (second stage)
+/**
+ * =========================================================
+ * Payment Approval
+ * =========================================================
+ */
+
 router.post(
   '/approve',
   authenticate,
   paymentRateLimiter,
+  idempotency,
   [
     body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
+      .notEmpty()
+      .withMessage('payment_id is required')
+      .isUUID()
+      .withMessage('payment_id must be UUID'),
+
     body('pi_payment_id')
       .optional()
-      .isString().withMessage('pi_payment_id must be a string')
+      .isString()
       .trim()
-      .matches(/^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$/)
-      .withMessage('pi_payment_id contains invalid characters'),
+      .matches(/^[a-zA-Z0-9._-]{6,128}$/)
+      .withMessage('invalid pi_payment_id'),
   ],
   approvePayment
 );
 
-// POST /payments/complete - Confirm a payment (atomic, final stage)
+/**
+ * =========================================================
+ * Payment Completion
+ * =========================================================
+ */
+
 router.post(
   '/complete',
   authenticate,
@@ -85,19 +129,27 @@ router.post(
   idempotency,
   [
     body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
+      .notEmpty()
+      .withMessage('payment_id is required')
+      .isUUID()
+      .withMessage('payment_id must be UUID'),
+
     body('transaction_id')
       .optional()
-      .isString().withMessage('transaction_id must be a string')
+      .isString()
       .trim()
       .matches(/^[a-zA-Z0-9_-]{8,128}$/)
-      .withMessage('transaction_id must be 8-128 alphanumeric characters (hyphens and underscores allowed)'),
+      .withMessage('transaction_id invalid format'),
   ],
   completePayment
 );
 
-// POST /payments/cancel - Cancel a payment (atomic)
+/**
+ * =========================================================
+ * Payment Cancel
+ * =========================================================
+ */
+
 router.post(
   '/cancel',
   authenticate,
@@ -105,44 +157,68 @@ router.post(
   idempotency,
   [
     body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
+      .notEmpty()
+      .withMessage('payment_id is required')
+      .isUUID()
+      .withMessage('payment_id must be UUID'),
   ],
   cancelPayment
 );
 
-// POST /payments/fail - Record a payment failure
+/**
+ * =========================================================
+ * Payment Failure
+ * =========================================================
+ */
+
 router.post(
   '/fail',
   authenticate,
   paymentRateLimiter,
   [
     body('payment_id')
-      .notEmpty().withMessage('payment_id is required')
-      .isUUID().withMessage('payment_id must be a valid UUID'),
+      .notEmpty()
+      .withMessage('payment_id is required')
+      .isUUID()
+      .withMessage('payment_id must be UUID'),
+
     body('reason')
       .optional()
-      .isString().withMessage('reason must be a string')
-      .trim(),
+      .isString()
+      .trim()
+      .isLength({ max: 200 })
+      .withMessage('reason too long'),
   ],
   failPayment
 );
 
-// POST /payments/resolve-incomplete - Resolve an incomplete Pi payment from a previous session
+/**
+ * =========================================================
+ * Resolve Incomplete Pi Payment
+ * =========================================================
+ */
+
 router.post(
   '/resolve-incomplete',
   authenticate,
   paymentRateLimiter,
   [
     body('pi_payment_id')
-      .notEmpty().withMessage('pi_payment_id is required')
-      .isString().withMessage('pi_payment_id must be a string')
-      .trim(),
+      .notEmpty()
+      .withMessage('pi_payment_id required')
+      .isString()
+      .trim()
+      .isLength({ min: 5, max: 128 }),
   ],
   resolveIncompletePayment
 );
 
-// GET /payments/history - Get payment history for authenticated user
+/**
+ * =========================================================
+ * Payment History
+ * =========================================================
+ */
+
 router.get(
   '/history',
   authenticate,
@@ -150,34 +226,43 @@ router.get(
   [
     query('page')
       .optional()
-      .isInt({ min: 1 }).withMessage('page must be an integer >= 1')
+      .isInt({ min: 1 })
       .toInt(),
+
     query('limit')
       .optional()
-      .isInt({ min: 1, max: 100 }).withMessage('limit must be an integer between 1 and 100')
+      .isInt({ min: 1, max: 100 })
       .toInt(),
+
     query('status')
       .optional()
-      .isIn(['created', 'approved', 'completed', 'cancelled', 'failed'])
-      .withMessage('status must be one of: created, approved, completed, cancelled, failed'),
+      .isIn(['created', 'approved', 'completed', 'cancelled', 'failed']),
+
     query('payment_method')
       .optional()
-      .isIn(['pi', 'card', 'wallet'])
-      .withMessage('payment_method must be one of: pi, card, wallet'),
+      .isIn(['pi', 'card', 'wallet']),
+
     query('from')
       .optional()
-      .isISO8601().withMessage('from must be a valid ISO date string'),
+      .isISO8601(),
+
     query('to')
       .optional()
-      .isISO8601().withMessage('to must be a valid ISO date string'),
+      .isISO8601(),
+
     query('sort')
       .optional()
-      .isIn(['asc', 'desc']).withMessage('sort must be asc or desc'),
+      .isIn(['asc', 'desc']),
   ],
   getPaymentHistory
 );
 
-// POST /payments/reconcile - Trigger stale payment reconciliation (internal)
+/**
+ * =========================================================
+ * Internal Reconciliation
+ * =========================================================
+ */
+
 router.post(
   '/reconcile',
   validateInternalKey,
@@ -185,15 +270,21 @@ router.post(
   triggerReconciliation
 );
 
-// GET /payments/:id/status - Get payment status
+/**
+ * =========================================================
+ * Payment Status
+ * =========================================================
+ */
+
 router.get(
   '/:id/status',
   authenticate,
   statusRateLimiter,
   [
     param('id')
-      .notEmpty().withMessage('id is required')
-      .isUUID().withMessage('id must be a valid UUID')
+      .notEmpty()
+      .isUUID()
+      .withMessage('id must be UUID'),
   ],
   getPaymentStatus
 );
