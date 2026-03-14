@@ -1,20 +1,26 @@
 /**
- * Payment service — Pi Network API integration.
+ * ── Pi Network Payment Service ──
  *
- * Handles calls to the Pi Network payment API for the approve and complete
- * stages of the Pi payment lifecycle.  All credentials and timeouts are read
- * exclusively from environment variables (never hardcoded).
+ * ✅ Production-ready for single-instance deployment
  *
- * Pi Network endpoints:
- *   Sandbox  (PI_SANDBOX=true, default): https://api.sandbox.minepi.com
- *   Mainnet  (PI_SANDBOX=false):         https://api.minepi.com
+ * Design Notes:
+ * 1. Retry with exponential backoff handles transient API/network issues.
+ * 2. Circuit breaker stops requests after 5 consecutive failures for 60s,
+ *    preventing API flooding.
+ * 3. Current implementation uses module-level variables for circuit state:
+ *      let circuitFailures = 0;
+ *      let circuitOpenUntil = 0;
+ *    This is fine for single-instance deployments (typical Railway setup).
+ * 4. ⚠️ If horizontal scaling (multiple instances) is used, each instance
+ *    maintains its own circuit state. Shared state (e.g., Redis) would be
+ *    required to enforce a global circuit breaker.
  *
- *   Approve: POST /v2/payments/:piPaymentId/approve
- *   Complete: POST /v2/payments/:piPaymentId/complete  { txid }
+ * Recommendation:
+ * - Keep it simple for now: single-instance is stable and maintainable.
+ * - Introduce Redis/shared state only if scaling requires it.
  */
-import { logInfo, logWarn, logError } from '../utils/logger';
 
-// ─── Pi API base URL ──────────────────────────────────────────────────────────
+import { logInfo, logWarn } from '../utils/logger';
 
 const getPiBaseUrl = (): string => {
   if (process.env.PI_PLATFORM_BASE_URL) return process.env.PI_PLATFORM_BASE_URL;
@@ -23,136 +29,110 @@ const getPiBaseUrl = (): string => {
     : 'https://api.sandbox.minepi.com';
 };
 
-// ─── Timeout helpers ──────────────────────────────────────────────────────────
+const APPROVE_TIMEOUT = parseInt(process.env.PI_API_APPROVE_TIMEOUT ?? '30000', 10);
+const COMPLETE_TIMEOUT = parseInt(process.env.PI_API_COMPLETE_TIMEOUT ?? '30000', 10);
+const MAX_RETRIES = parseInt(process.env.PI_API_RETRIES ?? '3', 10);
+const CIRCUIT_THRESHOLD = 5;      // عدد محاولات الفشل قبل فتح الدائرة
+const CIRCUIT_TIMEOUT = 60000;    // مدة فتح الدائرة 60 ثانية
 
-const getApproveTimeoutMs = (): number =>
-  parseInt(process.env.PI_API_APPROVE_TIMEOUT ?? '30000', 10);
+/* =========================================================
+   Circuit breaker state (module-level)
+========================================================= */
+let circuitFailures = 0;
+let circuitOpenUntil = 0;
 
-const getCompleteTimeoutMs = (): number =>
-  parseInt(process.env.PI_API_COMPLETE_TIMEOUT ?? '30000', 10);
+/* =========================================================
+   Helpers
+========================================================= */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// ─── Structured Pi error ──────────────────────────────────────────────────────
-
-/** Thrown when the Pi Network API returns an error or times out. */
 export class PiApiError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly httpStatus: number = 502,
-  ) {
+  constructor(public readonly code: string, message: string, public readonly httpStatus = 502) {
     super(message);
     this.name = 'PiApiError';
   }
-}
-
-// ─── Pi API helpers ───────────────────────────────────────────────────────────
-
-/**
- * Approve a Pi Network payment.
- * Calls POST /v2/payments/:piPaymentId/approve on the Pi Network API.
- *
- * @throws {PiApiError} on HTTP error, timeout, or network failure.
- */
-export const piApprovePayment = async (piPaymentId: string): Promise<void> => {
-  const apiKey = process.env.PI_API_KEY;
-  if (!apiKey) {
-    throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY is not configured', 500);
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), getApproveTimeoutMs());
-
-  try {
-    logInfo('Calling Pi API: approve', { piPaymentId });
-
-    const res = await fetch(
-      `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/approve`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-      },
-    );
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      logWarn('Pi API approve failed', { piPaymentId, status: res.status, body });
-      throw new PiApiError(
-        'PI_APPROVE_FAILED',
-        `Pi Network approval failed (HTTP ${res.status})`,
-        502,
-      );
-    }
-
-    logInfo('Pi API approve succeeded', { piPaymentId });
-  } catch (err) {
-    if (err instanceof PiApiError) throw err;
-    if ((err as Error).name === 'AbortError') {
-      logWarn('Pi API approve timed out', { piPaymentId });
-      throw new PiApiError('PI_TIMEOUT', 'Pi Network approve request timed out', 504);
-    }
-    logError('Pi API approve network error', { piPaymentId, error: (err as Error).message });
-    throw new PiApiError('PI_NETWORK_ERROR', `Pi Network error: ${(err as Error).message}`, 502);
-  } finally {
-    clearTimeout(timer);
-  }
 };
 
-/**
- * Complete a Pi Network payment.
- * Calls POST /v2/payments/:piPaymentId/complete on the Pi Network API.
- *
- * @param txId  Optional blockchain transaction ID supplied by the Pi SDK.
- * @throws {PiApiError} on HTTP error, timeout, or network failure.
- */
-export const piCompletePayment = async (piPaymentId: string, txId?: string): Promise<void> => {
+/* =========================================================
+   Internal fetch with retry + exponential backoff + circuit breaker
+========================================================= */
+const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 30000) => {
   const apiKey = process.env.PI_API_KEY;
-  if (!apiKey) {
-    throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY is not configured', 500);
+  if (!apiKey) throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY not configured', 500);
+
+  const now = Date.now();
+  if (circuitOpenUntil > now) {
+    throw new PiApiError('PI_CIRCUIT_OPEN', 'Pi API circuit breaker is open', 503);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), getCompleteTimeoutMs());
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
 
-  try {
-    logInfo('Calling Pi API: complete', { piPaymentId, txId });
-
-    const res = await fetch(
-      `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/complete`,
-      {
+    try {
+      const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Key ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ txid: txId ?? '' }),
+        headers: { Authorization: `Key ${apiKey}`, 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
-      },
-    );
+      });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      logWarn('Pi API complete failed', { piPaymentId, status: res.status, body });
-      throw new PiApiError(
-        'PI_COMPLETE_FAILED',
-        `Pi Network completion failed (HTTP ${res.status})`,
-        502,
-      );
-    }
+      if (res.ok) {
+        circuitFailures = 0; // reset failures on success
+        return res;
+      }
 
-    logInfo('Pi API complete succeeded', { piPaymentId, txId });
-  } catch (err) {
-    if (err instanceof PiApiError) throw err;
-    if ((err as Error).name === 'AbortError') {
-      logWarn('Pi API complete timed out', { piPaymentId });
-      throw new PiApiError('PI_TIMEOUT', 'Pi Network complete request timed out', 504);
+      const text = await res.text().catch(() => '');
+      logWarn('Pi API HTTP error', { url, status: res.status, attempt, body: text });
+
+      if (res.status === 429 || res.status >= 500) {
+        await sleep(500 * 2 ** (attempt - 1)); // exponential backoff
+        continue;
+      }
+
+      throw new PiApiError('PI_API_ERROR', `Pi API error (HTTP ${res.status})`, res.status);
+
+    } catch (err) {
+      if (err instanceof PiApiError) throw err;
+
+      if ((err as Error).name === 'AbortError') {
+        logWarn('Pi API timeout', { url, attempt });
+      } else {
+        logWarn('Pi API network error', { url, attempt, error: (err as Error).message });
+      }
+
+      await sleep(500 * 2 ** (attempt - 1)); // exponential backoff
+    } finally {
+      clearTimeout(timer);
     }
-    logError('Pi API complete network error', { piPaymentId, error: (err as Error).message });
-    throw new PiApiError('PI_NETWORK_ERROR', `Pi Network error: ${(err as Error).message}`, 502);
-  } finally {
-    clearTimeout(timer);
   }
+
+  // circuit breaker logic
+  circuitFailures++;
+  if (circuitFailures >= CIRCUIT_THRESHOLD) {
+    circuitOpenUntil = Date.now() + CIRCUIT_TIMEOUT;
+    logWarn('Pi API circuit breaker triggered', { threshold: CIRCUIT_THRESHOLD, openUntil: circuitOpenUntil });
+  }
+
+  throw new PiApiError('PI_RETRY_EXCEEDED', 'Pi API request failed after retries', 502);
+};
+
+/* =========================================================
+   Approve Payment
+========================================================= */
+export const piApprovePayment = async (piPaymentId: string) => {
+  const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/approve`;
+  logInfo('Calling Pi API: approve', { piPaymentId });
+  await callPiApi(url, undefined, APPROVE_TIMEOUT);
+  logInfo('Pi API approve succeeded', { piPaymentId });
+};
+
+/* =========================================================
+   Complete Payment
+========================================================= */
+export const piCompletePayment = async (piPaymentId: string, txId?: string) => {
+  const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/complete`;
+  logInfo('Calling Pi API: complete', { piPaymentId, txId });
+  await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT);
+  logInfo('Pi API complete succeeded', { piPaymentId, txId });
 };
