@@ -8,15 +8,13 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install all dependencies
-# --ignore-scripts skips postinstall (prisma generate); the explicit RUN below handles it
-# after the source is copied and prisma/schema.prisma is available.
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Generate Prisma client (default output: node_modules/.prisma/client)
+# Generate Prisma client
 RUN npx prisma generate
 
 # Build TypeScript
@@ -34,16 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies (prisma is now in dependencies so the CLI
-# is available at runtime for `npx prisma migrate deploy` in the entrypoint).
-RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+# Install only production dependencies
+RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
-# Copy Prisma schema first so `prisma generate` can find it
+# Copy Prisma schema
 COPY prisma/schema.prisma ./prisma/schema.prisma
 COPY prisma/migrations ./prisma/migrations
 
-# Regenerate Prisma client in the production node_modules to ensure the correct
-# binary for this image's architecture/OS is used.
+# Regenerate Prisma client for production
 RUN npx prisma generate
 
 # Copy built files from builder
