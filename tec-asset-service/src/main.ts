@@ -3,7 +3,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { fastifyHelmet } from '@fastify/helmet';
+import helmet from '@fastify/helmet';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -18,7 +18,6 @@ async function bootstrap() {
   );
 
   // 2. Security: Cross-Origin Resource Sharing (CORS)
-  // Essential for the 24 sectors to communicate with the core
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || '*';
   app.enableCors({
     origin: allowedOrigins,
@@ -28,17 +27,18 @@ async function bootstrap() {
   });
 
   // 3. Security: Helmet for XSS and Clickjacking protection
-  await app.register(fastifyHelmet, {
-    contentSecurityPolicy: false, // Disabled to allow Swagger UI in development
+  // Fixed: using "as any" to resolve Fastify/NestJS type conflicts in Railway Build
+  await app.register(helmet as any, {
+    contentSecurityPolicy: false, 
   });
 
   // 4. Global Validation Pipe: Strict Mode for Data Integrity
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,               // Strip non-decorated properties
-      forbidNonWhitelisted: true,    // Throw error if extra fields are present
-      transform: true,               // Automatically transform payloads to DTO types
-      errorHttpStatusCode: 422,      // Standard for Validation Errors
+      whitelist: true,               
+      forbidNonWhitelisted: true,    
+      transform: true,               
+      errorHttpStatusCode: 422,      
     }),
   );
 
@@ -60,6 +60,8 @@ async function bootstrap() {
 
   // 7. Network & Port Binding for Cloud Environments (Railway)
   const port = process.env.PORT || 5004;
+  
+  // Important: Must listen on '0.0.0.0' for Railway to detect the service
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Asset Service is running on: http://0.0.0.0:${port}/api/assets`);
