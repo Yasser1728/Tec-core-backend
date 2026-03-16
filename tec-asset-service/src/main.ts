@@ -27,7 +27,7 @@ async function bootstrap() {
   });
 
   // 3. Security: Helmet for XSS and Clickjacking protection
-  // Fixed: using "as any" to resolve Fastify/NestJS type conflicts in Railway Build
+  // Using "as any" to resolve Fastify/NestJS type conflicts during build
   await app.register(helmet as any, {
     contentSecurityPolicy: false, 
   });
@@ -61,12 +61,11 @@ async function bootstrap() {
   // 7. Network & Port Binding for Cloud Environments (Railway)
   const port = process.env.PORT || 5004;
   
-  // Important: Must listen on '0.0.0.0' for Railway to detect the service
+  // Important: Use '0.0.0.0' so the container is accessible externally
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Asset Service is running on: http://0.0.0.0:${port}/api/assets`);
-  logger.log(`🔐 CORS enabled for: ${allowedOrigins}`);
-  logger.log(`📚 Documentation: http://localhost:${port}/api/assets/docs`);
+  logger.log(`📚 Documentation: http://0.0.0.0:${port}/api/assets/docs`);
 }
 
 bootstrap();
