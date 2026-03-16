@@ -3,12 +3,15 @@ import { ConfigModule } from '@nestjs/config';
 import { AssetModule } from './modules/asset/asset.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 
-// Health Controller مباشر داخل الملف لضمان عدم حدوث خطأ في المسارات
 @Controller('health')
 class HealthController {
   @Get()
   check() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { 
+      status: 'ok', 
+      service: 'TEC Asset Service',
+      timestamp: new Date().toISOString() 
+    };
   }
 }
 
