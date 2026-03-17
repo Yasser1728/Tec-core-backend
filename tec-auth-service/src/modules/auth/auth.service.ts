@@ -1,201 +1,98 @@
 // src/modules/auth/auth.service.ts
 
-import {
-  Injectable,
-  UnauthorizedException,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
-// استيراد Prisma من البنية التحتية للمشروع
-import { PrismaService } from '../../infra/prisma/prisma.service'; 
-
-// استيراد الـ DTOs بشكل منفصل لحل مشكلة المسارات في TypeScript
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-
-import * as bcrypt from 'bcryptjs';
-import * as jwt from 'jsonwebtoken';
-// تصحيح مسار ملف الإعدادات
-import { env } from '../../config/env'; 
-import { v4 as uuidv4 } from 'uuid';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
 
   /**
-   * تسجيل مستخدم جديد يدعم البريد الإلكتروني أو Pi Network
+   * تسجيل مستخدم جديد (يدعم Pi Network والمستخدمين العاديين)
    */
   async register(dto: RegisterDto) {
-    if (!dto.email && !dto.pi_uid) {
-      throw new BadRequestException('Email or Pi UID is required');
-    }
-
-    // التحقق من وجود المستخدم مسبقاً بناءً على البريد أو معرف Pi
+    // 1. التحقق من وجود المستخدم مسبقاً عبر الإيميل أو Pi UID
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
-          dto.email ? { email: dto.email } : undefined,
-          dto.pi_uid ? { pi_uid: dto.pi_uid } : undefined,
-        ].filter(Boolean),
-      },
+          { email: dto.email },
+          { pi_uid: dto.pi_uid || undefined }
+        ]
+      }
     });
 
     if (existingUser) {
       throw new ConflictException('User already exists');
     }
 
-    // تشفير كلمة المرور إذا تم توفيرها
-    const passwordHash = dto.password
-      ? await bcrypt.hash(dto.password, 10)
-      : null;
+    // 2. تشفير كلمة المرور إذا كانت موجودة
+    const hashedPassword = dto.password 
+      ? await bcrypt.hash(dto.password, 10) 
+      : undefined;
 
-    // إنشاء الحساب الجديد في قاعدة البيانات
+    // 3. إنشاء المستخدم في قاعدة البيانات
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
-        password_hash: passwordHash,
+        password: hashedPassword,
         pi_uid: dto.pi_uid,
         pi_username: dto.pi_username,
-        role: 'user',
-        kyc_status: 'pending',
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        pi_uid: true,
-        pi_username: true,
-        created_at: true,
-      },
+        // يمكن إضافة قيم افتراضية أخرى هنا
+      }
     });
 
-    // تسجيل العملية في سجلات المراجعة
-    await this.prisma.auditLog.create({
-      data: {
-        user_id: user.id,
-        action: 'register',
-        metadata: {
-          email: dto.email,
-          pi_uid: dto.pi_uid,
-        },
-      },
-    });
-
-    return user;
+    return this.generateToken(user);
   }
 
   /**
-   * تسجيل الدخول التقليدي أو عبر Pi Network
+   * تسجيل الدخول
    */
   async login(dto: LoginDto) {
-    if (!dto.email && !dto.pi_uid) {
-      throw new BadRequestException('Email or Pi UID is required');
-    }
+    let user;
 
-    // البحث عن المستخدم
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          dto.email ? { email: dto.email } : undefined,
-          dto.pi_uid ? { pi_uid: dto.pi_uid } : undefined,
-        ].filter(Boolean),
-      },
-    });
+    // الدخول عبر Pi UID أو الإيميل
+    if (dto.pi_uid) {
+      user = await this.prisma.user.findUnique({ where: { pi_uid: dto.pi_uid } });
+    } else {
+      user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      
+      if (user && dto.password) {
+        const isMatch = await bcrypt.compare(dto.password, user.password);
+        if (!isMatch) user = null;
+      }
+    }
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    // التحقق من صحة كلمة المرور للبريد الإلكتروني
-    if (dto.email && dto.password) {
-      const valid =
-        user.password_hash &&
-        (await bcrypt.compare(dto.password, user.password_hash));
+    return this.generateToken(user);
+  }
 
-      if (!valid) {
-        await this.recordLoginAttempt(dto.email, false);
-        throw new UnauthorizedException('Invalid credentials');
-      }
-    }
-
-    // التحقق من تسجيل الدخول عبر Pi UID
-    if (dto.pi_uid && !dto.password && !dto.email) {
-      if (!user.pi_uid) {
-        throw new UnauthorizedException('Invalid Pi login');
-      }
-    }
-
-    // توليد رموز الوصول (Tokens) باستخدام القيم من ملف البيئة
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      pi_uid: user.pi_uid,
+  /**
+   * دالة مساعدة لإنشاء التوكن
+   */
+  private generateToken(user: any) {
+    const payload = { 
+      sub: user.id, 
+      email: user.email, 
+      pi_uid: user.pi_uid 
     };
-
-    const accessToken = jwt.sign(payload, env.JWT_SECRET, {
-      expiresIn: '1h',
-    });
-
-    const refreshToken = jwt.sign(
-      { sub: user.id, session: uuidv4() },
-      env.REFRESH_TOKEN_SECRET,
-      { expiresIn: '7d' },
-    );
-
-    // إنشاء جلسة العمل في قاعدة البيانات
-    const sessionId = uuidv4();
-    await this.prisma.session.create({
-      data: {
-        id: sessionId,
-        user_id: user.id,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    // حفظ رمز التجديد (Refresh Token)
-    await this.prisma.refreshToken.create({
-      data: {
-        id: uuidv4(),
-        user_id: user.id,
-        token: refreshToken,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        device: dto.device || 'unknown',
-        ip_address: dto.ip_address || 'unknown',
-      },
-    });
-
-    // تسجيل محاولة ناجحة
-    await this.recordLoginAttempt(
-      user.email || user.pi_uid || 'unknown',
-      true,
-    );
-
+    
     return {
-      accessToken,
-      refreshToken,
-      sessionId,
+      access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
         email: user.email,
-        role: user.role,
-        pi_uid: user.pi_uid,
-        pi_username: user.pi_username,
-      },
+        pi_username: user.pi_username
+      }
     };
-  }
-
-  private async recordLoginAttempt(
-    identifier: string,
-    success: boolean,
-  ) {
-    await this.prisma.loginAttempt.create({
-      data: {
-        email: identifier,
-        success,
-        created_at: new Date(),
-      },
-    });
   }
 }
