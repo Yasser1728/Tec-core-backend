@@ -1,6 +1,5 @@
 // src/modules/auth/auth.service.ts
-// TEC Auth Service — Production Ready v2.0
-// Fixed: Prisma path, bcrypt, Pi Network verification, error handling
+// TEC Auth Service v2.1 — All errors fixed
 
 import {
   Injectable,
@@ -9,46 +8,18 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import {
+  AuthResponse,
+  TokenPayload,
+  PiUserDTO,
+} from './auth.types';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
-
-// ─────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────
-
-interface PiUserDTO {
-  uid: string;
-  username: string;
-}
-
-interface TokenPayload {
-  sub: string;
-  email?: string;
-  pi_uid?: string;
-  pi_username?: string;
-}
-
-interface AuthResponse {
-  access_token: string;
-  token_type: 'Bearer';
-  expires_in: number;
-  user: {
-    id: string;
-    email?: string;
-    pi_uid?: string;
-    pi_username?: string;
-    created_at: Date;
-  };
-}
-
-// ─────────────────────────────────────────
-// Service
-// ─────────────────────────────────────────
 
 @Injectable()
 export class AuthService {
@@ -63,22 +34,16 @@ export class AuthService {
   ) {}
 
   // ─────────────────────────────────────────
-  // Pi Network Authentication (PRIMARY)
+  // Pi Network Login (PRIMARY)
   // ─────────────────────────────────────────
 
-  /**
-   * تسجيل الدخول عبر Pi Network SDK
-   * هذا هو Flow الرئيسي للمنصة
-   */
-  async loginWithPi(piAccessToken: string): Promise<AuthResponse> {
+  async piLogin(piAccessToken: string): Promise<AuthResponse> {
     if (!piAccessToken) {
       throw new BadRequestException('Pi access token is required');
     }
 
-    // 1. التحقق من التوكن مع Pi Network API
     const piUser = await this.verifyPiToken(piAccessToken);
 
-    // 2. البحث عن المستخدم أو إنشاؤه (Upsert)
     const user = await this.prisma.user.upsert({
       where: { pi_uid: piUser.uid },
       update: {
@@ -92,85 +57,57 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`Pi login success: ${piUser.username} (${piUser.uid})`);
-
+    this.logger.log(`Pi login: ${piUser.username}`);
     return this.buildAuthResponse(user);
   }
 
-  /**
-   * التحقق من Pi Access Token مع Pi Network API
-   */
   private async verifyPiToken(accessToken: string): Promise<PiUserDTO> {
     try {
-      const response = await axios.get(`${this.PI_API_URL}/v2/me`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+      const { data } = await axios.get(`${this.PI_API_URL}/v2/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
         timeout: 10000,
       });
 
-      const { uid, username } = response.data;
-
-      if (!uid || !username) {
+      if (!data.uid || !data.username) {
         throw new UnauthorizedException('Invalid Pi token response');
       }
 
-      return { uid, username };
+      return { uid: data.uid, username: data.username };
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-
-        if (status === 401) {
+        if (error.response?.status === 401) {
           throw new UnauthorizedException('Invalid or expired Pi token');
         }
-        if (status === 429) {
-          throw new BadRequestException('Pi API rate limit exceeded');
-        }
-
-        this.logger.error(`Pi API error: ${error.message}`, error.response?.data);
       }
-
       throw new UnauthorizedException('Failed to verify Pi token');
     }
   }
 
   // ─────────────────────────────────────────
-  // Standard Auth (SECONDARY — للتطوير/Admin)
+  // Standard Auth
   // ─────────────────────────────────────────
 
-  /**
-   * تسجيل مستخدم جديد بإيميل وباسورد
-   */
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    // 1. Validate input
     if (!dto.email && !dto.pi_uid) {
       throw new BadRequestException('Email or Pi UID is required');
     }
 
-    // 2. التحقق من عدم وجود المستخدم مسبقاً
+    const conditions: any[] = [];
+    if (dto.email) conditions.push({ email: dto.email });
+    if (dto.pi_uid) conditions.push({ pi_uid: dto.pi_uid });
+
     const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          dto.email ? { email: dto.email } : undefined,
-          dto.pi_uid ? { pi_uid: dto.pi_uid } : undefined,
-        ].filter(Boolean) as any,
-      },
+      where: { OR: conditions },
     });
 
     if (existingUser) {
-      throw new ConflictException(
-        existingUser.email === dto.email
-          ? 'Email already registered'
-          : 'Pi account already registered',
-      );
+      throw new ConflictException('User already exists');
     }
 
-    // 3. تشفير كلمة المرور
     const hashedPassword = dto.password
       ? await bcrypt.hash(dto.password, this.SALT_ROUNDS)
       : null;
 
-    // 4. إنشاء المستخدم
     const user = await this.prisma.user.create({
       data: {
         email: dto.email ?? null,
@@ -181,63 +118,39 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`New user registered: ${user.email || user.pi_username}`);
-
+    this.logger.log(`Registered: ${user.email || user.pi_username}`);
     return this.buildAuthResponse(user);
   }
 
-  /**
-   * تسجيل الدخول بإيميل وباسورد
-   */
   async login(dto: LoginDto): Promise<AuthResponse> {
     let user: any = null;
 
-    // الدخول عبر Pi UID (بدون باسورد)
     if (dto.pi_uid) {
-      user = await this.prisma.user.findUnique({
-        where: { pi_uid: dto.pi_uid },
-      });
+      user = await this.prisma.user.findUnique({ where: { pi_uid: dto.pi_uid } });
+      if (!user) throw new UnauthorizedException('Pi account not found');
+    } else if (dto.email && dto.password) {
+      user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (!user?.password) throw new UnauthorizedException('Invalid credentials');
 
-      if (!user) {
-        throw new UnauthorizedException('Pi account not found. Please register first.');
-      }
-    }
-    // الدخول عبر الإيميل + باسورد
-    else if (dto.email && dto.password) {
-      user = await this.prisma.user.findUnique({
-        where: { email: dto.email },
-      });
-
-      if (!user || !user.password) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-
-      const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-      if (!isPasswordValid) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
+      const valid = await bcrypt.compare(dto.password, user.password);
+      if (!valid) throw new UnauthorizedException('Invalid credentials');
     } else {
-      throw new BadRequestException('Provide either Pi UID or email + password');
+      throw new BadRequestException('Provide Pi UID or email + password');
     }
 
-    // تحديث آخر تسجيل دخول
     await this.prisma.user.update({
       where: { id: user.id },
       data: { last_login: new Date() },
     });
 
-    this.logger.log(`Login success: ${user.email || user.pi_username}`);
-
+    this.logger.log(`Login: ${user.email || user.pi_username}`);
     return this.buildAuthResponse(user);
   }
 
   // ─────────────────────────────────────────
-  // Token Management
+  // Token Utilities
   // ─────────────────────────────────────────
 
-  /**
-   * التحقق من JWT Token (يُستخدم في Gateway)
-   */
   async validateToken(token: string): Promise<TokenPayload> {
     try {
       return this.jwtService.verify<TokenPayload>(token);
@@ -246,9 +159,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * الحصول على بيانات المستخدم من التوكن
-   */
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -262,22 +172,18 @@ export class AuthService {
       },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
+    if (!user) throw new UnauthorizedException('User not found');
     return user;
   }
 
   // ─────────────────────────────────────────
-  // Private Helpers
+  // Private
   // ─────────────────────────────────────────
 
-  /**
-   * بناء استجابة Auth الموحدة
-   */
   private buildAuthResponse(user: any): AuthResponse {
-    const expiresIn = this.configService.get<number>('JWT_EXPIRES_IN', 86400); // 24h default
+    const expiresIn = Number(
+      this.configService.get<number>('JWT_EXPIRES_IN', 86400),
+    );
 
     const payload: TokenPayload = {
       sub: user.id,
@@ -286,10 +192,8 @@ export class AuthService {
       pi_username: user.pi_username ?? undefined,
     };
 
-    const token = this.jwtService.sign(payload, { expiresIn });
-
     return {
-      access_token: token,
+      access_token: this.jwtService.sign(payload, { expiresIn }),
       token_type: 'Bearer',
       expires_in: expiresIn,
       user: {
