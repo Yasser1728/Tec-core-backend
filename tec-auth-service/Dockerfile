@@ -1,64 +1,55 @@
-# ─────────────────────────────────────────────────────────────
-# Stage 1: Builder
-# ─────────────────────────────────────────────────────────────
+# ── Stage 1: Builder ────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies for Prisma
+# Install dependencies for Prisma on Alpine
 RUN apk add --no-cache openssl
 
-# Copy only package files first (better caching)
+# Copy package configuration
 COPY package*.json ./
+COPY tsconfig.json ./
 
-RUN npm ci
+# Use install instead of ci to regenerate the lockfile during the build
+# This fixes the "out of sync" errors occurring in Railway
+RUN npm install
 
-# Copy source
+# Copy source code and prisma schema
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma Client
 RUN npx prisma generate
 
-# Build NestJS app
+# Build the NestJS application (outputs to /dist)
 RUN npm run build
 
-
-# ─────────────────────────────────────────────────────────────
-# Stage 2: Production
-# ─────────────────────────────────────────────────────────────
+# ── Stage 2: Production ─────────────────────────────────────────────────────
 FROM node:20-alpine
 
 WORKDIR /app
-
 ENV NODE_ENV=production
 
-# Install only required runtime deps
+# Required for Prisma at runtime
 RUN apk add --no-cache openssl
 
-# Create non-root user (Security Best Practice)
+# Security: Create a non-root user
 RUN addgroup -S app && adduser -S app -G app
 
-# Copy only needed files
-COPY package*.json ./
-
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Copy build artifacts
+# Copy only the necessary artifacts from the builder stage
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
-# Change ownership
-RUN chown -R app:app /app
+# Set permissions
+RUN chmod +x docker-entrypoint.sh && chown -R app:app /app
 
 USER app
 
-# App port
+# Set execution port
 ENV PORT=5001
 EXPOSE 5001
 
-# Healthcheck (faster + cleaner)
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD node dist/healthcheck.js || exit 1
-
-# Start app
-CMD ["node", "dist/main.js"]
+# Start via the entrypoint script
+ENTRYPOINT ["./docker-entrypoint.sh"]
