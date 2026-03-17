@@ -1,33 +1,21 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+// src/app.module.ts
+import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
-import { PrismaModule } from './infra/prisma/prisma.module';
-import { HealthModule } from './modules/health/health.module';
-import { requestIdMiddleware } from './middleware/request-id';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
-    // 1. Global configuration and environment variables
-    ConfigModule.forRoot({
-      isGlobal: true,
-      cache: true,
-    }),
+    // Config — loads .env
+    ConfigModule.forRoot({ isGlobal: true }),
 
-    // 2. Infrastructure modules (Prisma ORM)
+    // Rate limiting
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
+
+    // Core modules
     PrismaModule,
-
-    // 3. Service modules
     AuthModule,
-    HealthModule,
   ],
-  controllers: [],
-  providers: [],
 })
-export class AppModule implements NestModule {
-  // Apply legacy middleware (Request ID) for tracing/log correlation
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(requestIdMiddleware)
-      .forRoutes('*');
-  }
-}
+export class AppModule {}
