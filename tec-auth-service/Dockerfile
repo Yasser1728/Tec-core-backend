@@ -1,47 +1,64 @@
-# Multi-stage build for TEC Auth Service
-
-# ── Stage 1: Builder ────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+# ─────────────────────────────────────────────────────────────
+# Stage 1: Builder
+# ─────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install dependencies for Prisma
+RUN apk add --no-cache openssl
 
+# Copy only package files first (better caching)
 COPY package*.json ./
-RUN npm ci --ignore-scripts
 
+RUN npm ci
+
+# Copy source
 COPY . .
 
-# Generate Prisma client (custom output: ./prisma/client)
+# Generate Prisma client
 RUN npx prisma generate
 
-# Build TypeScript
+# Build NestJS app
 RUN npm run build
 
-# ── Stage 2: Production ─────────────────────────────────────────────────────
-FROM node:20-slim
+
+# ─────────────────────────────────────────────────────────────
+# Stage 2: Production
+# ─────────────────────────────────────────────────────────────
+FROM node:20-alpine
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install only required runtime deps
+RUN apk add --no-cache openssl
 
+# Create non-root user (Security Best Practice)
+RUN addgroup -S app && adduser -S app -G app
+
+# Copy only needed files
 COPY package*.json ./
-RUN npm ci --only=production --ignore-scripts && npm cache clean --force
 
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copy build artifacts
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma/client ./prisma/client
-COPY prisma/schema.prisma ./prisma/schema.prisma
-COPY prisma/migrations ./prisma/migrations
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x docker-entrypoint.sh
+COPY --from=builder /app/prisma ./prisma
 
-ARG PORT=5001
-ENV PORT=${PORT}
-EXPOSE ${PORT}
+# Change ownership
+RUN chown -R app:app /app
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:' + process.env.PORT + '/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+USER app
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# App port
+ENV PORT=5001
+EXPOSE 5001
+
+# Healthcheck (faster + cleaner)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD node dist/healthcheck.js || exit 1
+
+# Start app
+CMD ["node", "dist/main.js"]
