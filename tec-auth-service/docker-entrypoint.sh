@@ -1,13 +1,18 @@
 #!/bin/sh
 set -e
 
-echo "Resolving any failed migrations..."
-npx prisma migrate resolve \
-  --rolled-back 20260302000000_add_pi_auth_fields \
-  2>/dev/null || true
+echo "⏳ Waiting for database..."
 
-echo "Running Prisma migrations..."
+# Wait for DB (important in Docker / Kubernetes)
+until nc -z $DB_HOST $DB_PORT; do
+  sleep 1
+done
+
+echo "✅ Database is ready"
+
+echo "🔄 Applying Prisma migrations..."
 npx prisma migrate deploy
 
-echo "Starting Auth Service..."
-exec node dist/index.js
+echo "🚀 Starting TEC Auth Service..."
+
+exec node dist/main.js
