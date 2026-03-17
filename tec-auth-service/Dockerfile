@@ -1,35 +1,34 @@
-# 1. المرحلة الأولى: بناء التطبيق
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# تثبيت مكتبات النظام اللازمة لـ Prisma
+# Install system dependencies for Prisma
 RUN apk add --no-cache openssl
 
-# نسخ ملفات التعريف أولاً
+# Copy configuration files
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# تثبيت كل المكتبات (بما فيها Dev dependencies اللازمة للـ build)
+# Install ALL dependencies
 RUN npm install
 
-# نسخ الكود بالكامل (مهم جداً قبل الـ build)
+# Copy source code
 COPY . .
 
-# توليد ملفات Prisma Client
+# Generate Prisma Client
 RUN npx prisma generate
 
-# تنفيذ عملية البناء (هنا كانت المشكلة)
+# Build the project
 RUN npm run build
 
-# 2. المرحلة الثانية: التشغيل (تصغير حجم الصورة)
+# Stage 2: Production
 FROM node:20-alpine
 
 WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-# نسخ الملفات النهائية فقط من المرحلة الأولى
+# Copy built assets and necessary files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
