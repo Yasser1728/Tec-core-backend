@@ -6,11 +6,14 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../../infra/prisma/prisma.service';
-import { LoginDto, RegisterDto } from './dto';
+// تعديل المسار للوصول إلى PrismaService (نعود خطوتين للخلف ثم ندخل infra)
+import { PrismaService } from '../../infra/prisma/prisma.service'; 
+// تعديل الاستيراد ليكون مباشراً من ملف الـ dto لتجنب مشكلة الـ index.ts المفقود
+import { LoginDto, RegisterDto } from './dto/register.dto'; 
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import { env } from '../../config/env';
+// تعديل المسار للوصول إلى الإعدادات (نعود خطوتين للخلف ثم ندخل config)
+import { env } from '../../config/env'; 
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -18,14 +21,14 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Register a new user (Email + optional Pi Network)
+   * تسجيل مستخدم جديد (بريد إلكتروني أو معرف Pi Network)
    */
   async register(dto: RegisterDto) {
     if (!dto.email && !dto.pi_uid) {
       throw new BadRequestException('Email or Pi UID is required');
     }
 
-    // Check if user exists
+    // التحقق من وجود المستخدم مسبقاً
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -39,12 +42,12 @@ export class AuthService {
       throw new ConflictException('User already exists');
     }
 
-    // Hash password if provided
+    // تشفير كلمة المرور إذا وجدت
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, 10)
       : null;
 
-    // Create user
+    // إنشاء المستخدم في قاعدة البيانات
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -64,7 +67,7 @@ export class AuthService {
       },
     });
 
-    // Audit log
+    // سجل العمليات (Audit log)
     await this.prisma.auditLog.create({
       data: {
         user_id: user.id,
@@ -80,14 +83,14 @@ export class AuthService {
   }
 
   /**
-   * Login user (Email/Password or Pi UID)
+   * تسجيل الدخول (كلمة مرور أو Pi UID)
    */
   async login(dto: LoginDto) {
     if (!dto.email && !dto.pi_uid) {
       throw new BadRequestException('Email or Pi UID is required');
     }
 
-    // Find user
+    // البحث عن المستخدم
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -101,7 +104,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    // Email/password login
+    // التحقق من كلمة المرور في حال الدخول بالبريد
     if (dto.email && dto.password) {
       const valid =
         user.password_hash &&
@@ -113,14 +116,14 @@ export class AuthService {
       }
     }
 
-    // Pi login only
+    // التحقق من صحة دخول Pi
     if (dto.pi_uid && !dto.password && !dto.email) {
       if (!user.pi_uid) {
         throw new UnauthorizedException('Invalid Pi login');
       }
     }
 
-    // Generate tokens
+    // إنشاء التوكن (JWT) باستخدام مفاتيح البيئة
     const payload = {
       sub: user.id,
       email: user.email,
@@ -138,7 +141,7 @@ export class AuthService {
       { expiresIn: '7d' },
     );
 
-    // Create session
+    // إنشاء الجلسة (Session)
     const sessionId = uuidv4();
     await this.prisma.session.create({
       data: {
@@ -148,7 +151,7 @@ export class AuthService {
       },
     });
 
-    // Save refresh token
+    // حفظ Refresh Token
     await this.prisma.refreshToken.create({
       data: {
         id: uuidv4(),
@@ -160,7 +163,7 @@ export class AuthService {
       },
     });
 
-    // Record success
+    // تسجيل نجاح الدخول
     await this.recordLoginAttempt(
       user.email || user.pi_uid || 'unknown',
       true,
@@ -181,7 +184,7 @@ export class AuthService {
   }
 
   /**
-   * Record login attempts
+   * تسجيل محاولات الدخول
    */
   private async recordLoginAttempt(
     identifier: string,
