@@ -1,72 +1,69 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { logWarn, logError } from '../utils/logger';
 
-/** Shape of the JWT payload issued by the auth service. */
-interface TokenPayload {
+interface TokenPayload extends JwtPayload {
+  sub?: string;
   id?: string;
   userId?: string;
   role?: string;
   sessionId?: string;
-  iat?: number;
-  exp?: number;
 }
 
-/** Clock tolerance in seconds applied when verifying token expiry. */
+/** Clock tolerance (seconds) */
 const getClockTolerance = (): number =>
-  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '0', 10);
+  parseInt(process.env.JWT_CLOCK_TOLERANCE ?? '5', 10);
 
-/**
- * Decode the JWT header without verifying it (to inspect `alg` before full
- * verification) or return null on malformed input.
- */
+/** Safe decode header */
 function decodeHeader(token: string): { alg?: string } | null {
   try {
     const [headerB64] = token.split('.');
     const json = Buffer.from(headerB64, 'base64url').toString('utf8');
-    return JSON.parse(json) as { alg?: string };
+    return JSON.parse(json);
   } catch {
     return null;
   }
 }
 
-/**
- * Verifies the Bearer JWT in the Authorization header.
- *
- * - Returns 401 for missing/invalid/expired tokens and unsupported algorithms.
- * - Returns 500 when JWT_SECRET is not configured.
- * - On success, attaches `req.userId` and `req.user = { id, role, sessionId }`.
- */
-export const jwtMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
+/** Extract Bearer token safely */
+function extractToken(authHeader?: string): string | null {
+  if (!authHeader) return null;
+  if (!authHeader.startsWith('Bearer ')) return null;
+  return authHeader.slice(7);
+}
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+export const jwtMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  const token = extractToken(req.headers.authorization);
+
+  if (!token) {
     res.status(401).json({
       success: false,
-      error: { code: 'AUTHENTICATION_ERROR', message: 'No token provided' },
+      error: { code: 'AUTHENTICATION_ERROR', message: 'Token missing' },
     });
     return;
   }
 
-  const token = authHeader.substring(7); // strip 'Bearer '
-
-  // Reject alg:none and non-HS256 tokens before signature verification.
+  // 🔒 Pre-check algorithm
   const header = decodeHeader(token);
   if (!header || header.alg !== 'HS256') {
-    logWarn('JWT rejected: unsupported algorithm', { alg: header?.alg });
+    logWarn('JWT rejected: invalid algorithm', { alg: header?.alg });
     res.status(401).json({
       success: false,
-      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
+      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid token' },
     });
     return;
   }
 
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    logError('JWT_SECRET environment variable is not set');
+    logError('JWT_SECRET not set');
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+      error: { code: 'INTERNAL_ERROR', message: 'Server misconfiguration' },
     });
     return;
   }
@@ -77,25 +74,43 @@ export const jwtMiddleware = (req: Request, res: Response, next: NextFunction): 
       clockTolerance: getClockTolerance(),
     }) as TokenPayload;
 
-    // Support both `id` and legacy `userId` payload fields.
-    const userId = decoded.id ?? decoded.userId;
+    // 🔥 دعم كل formats (sub هو الأفضل)
+    const userId = decoded.sub || decoded.id || decoded.userId;
+
     if (!userId) {
-      logWarn('JWT rejected: missing user identifier in payload');
+      logWarn('JWT rejected: missing user identifier');
       res.status(401).json({
         success: false,
-        error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
+        error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid token' },
       });
       return;
     }
 
+    // ✅ Attach user
     req.userId = userId;
-    req.user = { id: userId, role: decoded.role, sessionId: decoded.sessionId };
+    req.user = {
+      id: userId,
+      role: decoded.role || 'user',
+      sessionId: decoded.sessionId,
+    };
+
     next();
-  } catch (error) {
-    logWarn('JWT verification failed', { message: (error as Error).message });
+  } catch (error: any) {
+    // 🎯 تفريق الأخطاء (مهم جدًا للمراقبة)
+    if (error.name === 'TokenExpiredError') {
+      logWarn('JWT expired', { exp: error.expiredAt });
+      res.status(401).json({
+        success: false,
+        error: { code: 'TOKEN_EXPIRED', message: 'Token expired' },
+      });
+      return;
+    }
+
+    logWarn('JWT verification failed', { message: error.message });
+
     res.status(401).json({
       success: false,
-      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
+      error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid token' },
     });
   }
 };
