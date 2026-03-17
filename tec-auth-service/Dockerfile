@@ -1,35 +1,35 @@
-# Stage 1: Build
+# 1. المرحلة الأولى: بناء التطبيق
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# تثبيت الأدوات اللازمة للـ Prisma
+# تثبيت مكتبات النظام اللازمة لـ Prisma
 RUN apk add --no-cache openssl
 
-# نسخ ملفات الإعدادات أولاً لضمان الـ Caching
+# نسخ ملفات التعريف أولاً
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# تثبيت كافة المكتبات (بما فيها الـ DevDependencies الضرورية للـ Build)
+# تثبيت كل المكتبات (بما فيها Dev dependencies اللازمة للـ build)
 RUN npm install
 
-# نسخ بقية ملفات المشروع
+# نسخ الكود بالكامل (مهم جداً قبل الـ build)
 COPY . .
 
-# توليد Prisma Client
+# توليد ملفات Prisma Client
 RUN npx prisma generate
 
-# تنفيذ الـ Build للمشروع
+# تنفيذ عملية البناء (هنا كانت المشكلة)
 RUN npm run build
 
-# Stage 2: Runtime
+# 2. المرحلة الثانية: التشغيل (تصغير حجم الصورة)
 FROM node:20-alpine
 
 WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-# نسخ الملفات المبنية فقط والمكتبات النهائية
+# نسخ الملفات النهائية فقط من المرحلة الأولى
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
@@ -37,5 +37,4 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 
-# أمر التشغيل
 CMD ["npm", "run", "start"]
