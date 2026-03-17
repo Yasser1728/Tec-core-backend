@@ -1,7 +1,7 @@
 // src/sdk/tec-auth-sdk.ts
 
 import axios, { AxiosInstance } from 'axios';
-import { env } from '../config/env';
+import { env } from '../config/env'; // التأكد من المسار الصحيح للملف
 
 export interface LoginDto {
   email?: string;
@@ -34,7 +34,8 @@ export interface AuthResponse {
 export class AuthClient {
   private http: AxiosInstance;
 
-  constructor(baseURL: string = env.AUTH_BASE_URL) {
+  // تم تغيير AUTH_BASE_URL إلى API_BASE_URL ليتطابق مع env.ts
+  constructor(baseURL: string = env.API_BASE_URL) {
     this.http = axios.create({
       baseURL,
       headers: { 'Content-Type': 'application/json' },
