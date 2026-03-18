@@ -6,83 +6,149 @@ import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 export class ProxyService {
   private readonly logger = new Logger('ProxyService');
 
-  // Define all 14 microservices dynamically
-  private readonly services: Record<string, Options> = {
+  private readonly services: Record<string, Options & { aliases?: string[] }> = {
     assets: {
-      target: 'https://asset-service-production-54c4.up.railway.app',
+      target: process.env.ASSET_SERVICE_URL || 'https://asset-service-production-54c4.up.railway.app',
       pathRewrite: { '^/api/assets': '' },
     },
     auth: {
-      target: 'https://auth-service-pi.up.railway.app',
+      target: process.env.AUTH_SERVICE_URL || 'https://auth-service-pi.up.railway.app',
       pathRewrite: { '^/api/auth': '' },
     },
+
+    // ✅ Payment: singular + plural aliases
     payment: {
-      target: 'https://payment-service-production-90e5.up.railway.app',
+      target: process.env.PAYMENT_SERVICE_URL || 'https://payment-service-production-90e5.up.railway.app',
       pathRewrite: { '^/api/payment': '' },
+      aliases: ['payments'],  // /api/payments → نفس الـ service
     },
+
+    // ✅ Wallet: singular + plural aliases
     wallet: {
-      target: 'https://wallet-service-production-445d.up.railway.app',
+      target: process.env.WALLET_SERVICE_URL || 'https://wallet-service-production-445d.up.railway.app',
       pathRewrite: { '^/api/wallet': '' },
+      aliases: ['wallets'],   // /api/wallets → نفس الـ service
     },
+
     fundx: {
-      target: 'https://fundx-service.up.railway.app',
+      target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
       pathRewrite: { '^/api/fundx': '' },
     },
     nexus: {
-      target: 'https://nexus-service.up.railway.app',
+      target: process.env.NEXUS_SERVICE_URL || 'https://nexus-service.up.railway.app',
       pathRewrite: { '^/api/nexus': '' },
     },
     identity: {
-      target: 'https://identity-service.up.railway.app',
+      target: process.env.IDENTITY_SERVICE_URL || 'https://identity-service.up.railway.app',
       pathRewrite: { '^/api/identity': '' },
     },
     analytics: {
-      target: 'https://analytics-service.up.railway.app',
+      target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service.up.railway.app',
       pathRewrite: { '^/api/analytics': '' },
     },
     notification: {
-      target: 'https://notification-service.up.railway.app',
+      target: process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service.up.railway.app',
       pathRewrite: { '^/api/notification': '' },
     },
     domains: {
-      target: 'https://domain-service.up.railway.app',
+      target: process.env.DOMAIN_SERVICE_URL || 'https://domain-service.up.railway.app',
       pathRewrite: { '^/api/domains': '' },
     },
     commerce: {
-      target: 'https://commerce-service.up.railway.app',
+      target: process.env.COMMERCE_SERVICE_URL || 'https://commerce-service.up.railway.app',
       pathRewrite: { '^/api/commerce': '' },
     },
     assets2: {
-      target: 'https://assets2-service.up.railway.app',
+      target: process.env.ASSETS2_SERVICE_URL || 'https://assets2-service.up.railway.app',
       pathRewrite: { '^/api/assets2': '' },
     },
     assets3: {
-      target: 'https://assets3-service.up.railway.app',
+      target: process.env.ASSETS3_SERVICE_URL || 'https://assets3-service.up.railway.app',
       pathRewrite: { '^/api/assets3': '' },
     },
     tokens: {
-      target: 'https://token-service.up.railway.app',
+      target: process.env.TOKEN_SERVICE_URL || 'https://token-service.up.railway.app',
       pathRewrite: { '^/api/tokens': '' },
     },
   };
 
   public registerProxies(app: Application) {
     Object.entries(this.services).forEach(([key, options]) => {
-      app.use(
-        `/api/${key}`,
-        createProxyMiddleware({
-          ...options,
-          changeOrigin: true,
-          onProxyRes: (_proxyRes, _req, _res) => {
-            this.logger.log(`[${key} Proxy] Response received with status: ${_proxyRes.statusCode}`);
-          },
-          onError: (err, _req: Request, res: Response) => {
-            this.logger.error(`[${key} Proxy Error] ${err.message}`);
-            res.status(500).json({ error: `${key} Service unavailable` });
-          },
-        }),
-      );
-      this.logger.log(`Mapped /api/${key} -> ${options.target}`);
+      const { aliases, ...proxyOptions } = options;
+
+      // ✅ Register الـ main route
+      this.registerSingleProxy(app, key, proxyOptions);
+
+      // ✅ Register الـ aliases (plural versions)
+      if (aliases && aliases.length > 0) {
+        aliases.forEach((alias) => {
+          // Alias بيعمل pathRewrite لنفس الـ target
+          const aliasOptions: Options = {
+            ...proxyOptions,
+            pathRewrite: { [`^/api/${alias}`]: '' },
+          };
+          this.registerSingleProxy(app, alias, aliasOptions);
+        });
+      }
     });
+
+    this.logger.log(
+      `🚀 TEC Gateway is Live on port ${process.env.PORT || 3000}`,
+    );
+    this.logger.log(
+      `🔧 All ${this.getTotalRoutes()} microservice routes have been mapped successfully`,
+    );
+  }
+
+  private registerSingleProxy(app: Application, routeKey: string, options: Options) {
+    const target = options.target as string;
+
+    app.use(
+      `/api/${routeKey}`,
+      createProxyMiddleware({
+        ...options,
+        changeOrigin: true,
+        secure: true,
+        timeout: 30000,
+        proxyTimeout: 30000,
+        onProxyReq: (proxyReq, req: Request) => {
+          // ✅ Forward الـ Authorization header للـ services
+          const auth = req.headers['authorization'];
+          if (auth) {
+            proxyReq.setHeader('Authorization', auth);
+          }
+          // ✅ Forward الـ internal secret للـ service-to-service calls
+          proxyReq.setHeader(
+            'x-internal-secret',
+            process.env.INTERNAL_SECRET || '',
+          );
+          this.logger.debug(
+            `[${routeKey}] ${req.method} ${req.url} → ${target}`,
+          );
+        },
+        onProxyRes: (_proxyRes, _req: Request) => {
+          this.logger.log(
+            `[${routeKey} Proxy] Response received with status: ${_proxyRes.statusCode}`,
+          );
+        },
+        onError: (err, _req: Request, res: Response) => {
+          this.logger.error(`[${routeKey} Proxy Error] ${err.message}`);
+          if (!res.headersSent) {
+            res.status(502).json({
+              error: `${routeKey} service unavailable`,
+              message: 'Bad Gateway — upstream service did not respond',
+            });
+          }
+        },
+      }),
+    );
+
+    this.logger.log(`[HPM] Mapped /api/${routeKey} -> ${target}`);
+  }
+
+  private getTotalRoutes(): number {
+    return Object.entries(this.services).reduce((count, [, options]) => {
+      return count + 1 + ((options as any).aliases?.length || 0);
+    }, 0);
   }
 }
