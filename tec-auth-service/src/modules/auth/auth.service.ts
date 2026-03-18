@@ -136,8 +136,27 @@ export class AuthService {
     return user;
   }
 
+  // ✅ الدالة المصلحة
   private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
-    const expiresIn = Number(this.configService.get('JWT_EXPIRES_IN', 86400));
+    const jwtSecret = this.configService.get<string>('JWT_SECRET', 'default-secret');
+    const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret);
+
+    // ✅ تحويل آمن: يقبل '7d' أو '86400' أو رقم
+    const parseExpiry = (value: string | undefined, fallback: number): string | number => {
+      if (!value) return fallback;
+      const asNumber = Number(value);
+      return isNaN(asNumber) ? value : asNumber;
+    };
+
+    const expiresIn = parseExpiry(
+      this.configService.get<string>('JWT_EXPIRES_IN'),
+      86400,  // fallback: 24 ساعة بالثواني
+    );
+
+    const refreshExpiresIn = parseExpiry(
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN'),
+      604800, // fallback: 7 أيام بالثواني
+    );
 
     const payload: TokenPayload = {
       sub: user.id,
@@ -145,10 +164,17 @@ export class AuthService {
       pi_username: user.pi_username ?? undefined,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn });
+    const accessToken = this.jwtService.sign(payload, {
+      secret: jwtSecret,
+      expiresIn,
+    });
+
     const refreshToken = this.jwtService.sign(
       { sub: user.id, type: 'refresh' },
-      { expiresIn: expiresIn * 7 },
+      {
+        secret: jwtRefreshSecret,
+        expiresIn: refreshExpiresIn,
+      },
     );
 
     return {
@@ -168,4 +194,4 @@ export class AuthService {
       },
     };
   }
-}
+  }
