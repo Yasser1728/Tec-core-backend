@@ -15,21 +15,16 @@ export class ProxyService {
       target: process.env.AUTH_SERVICE_URL || 'https://auth-service-pi.up.railway.app',
       pathRewrite: { '^/api/auth': '' },
     },
-
-    // ✅ Payment: singular + plural aliases
     payment: {
       target: process.env.PAYMENT_SERVICE_URL || 'https://payment-service-production-90e5.up.railway.app',
       pathRewrite: { '^/api/payment': '' },
-      aliases: ['payments'],  // /api/payments → نفس الـ service
+      aliases: ['payments'],
     },
-
-    // ✅ Wallet: singular + plural aliases
     wallet: {
       target: process.env.WALLET_SERVICE_URL || 'https://wallet-service-production-445d.up.railway.app',
       pathRewrite: { '^/api/wallet': '' },
-      aliases: ['wallets'],   // /api/wallets → نفس الـ service
+      aliases: ['wallets'],
     },
-
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
       pathRewrite: { '^/api/fundx': '' },
@@ -76,13 +71,10 @@ export class ProxyService {
     Object.entries(this.services).forEach(([key, options]) => {
       const { aliases, ...proxyOptions } = options;
 
-      // ✅ Register الـ main route
       this.registerSingleProxy(app, key, proxyOptions);
 
-      // ✅ Register الـ aliases (plural versions)
       if (aliases && aliases.length > 0) {
         aliases.forEach((alias) => {
-          // Alias بيعمل pathRewrite لنفس الـ target
           const aliasOptions: Options = {
             ...proxyOptions,
             pathRewrite: { [`^/api/${alias}`]: '' },
@@ -92,12 +84,8 @@ export class ProxyService {
       }
     });
 
-    this.logger.log(
-      `🚀 TEC Gateway is Live on port ${process.env.PORT || 3000}`,
-    );
-    this.logger.log(
-      `🔧 All ${this.getTotalRoutes()} microservice routes have been mapped successfully`,
-    );
+    this.logger.log(`🚀 TEC Gateway is Live on port ${process.env.PORT || 3000}`);
+    this.logger.log(`🔧 All ${this.getTotalRoutes()} microservice routes have been mapped successfully`);
   }
 
   private registerSingleProxy(app: Application, routeKey: string, options: Options) {
@@ -112,16 +100,17 @@ export class ProxyService {
         timeout: 30000,
         proxyTimeout: 30000,
         onProxyReq: (proxyReq, req: Request) => {
-          // ✅ Forward الـ Authorization header للـ services
           const auth = req.headers['authorization'];
           if (auth) {
             proxyReq.setHeader('Authorization', auth);
           }
-          // ✅ Forward الـ internal secret للـ service-to-service calls
+
+          // ✅ x-internal-key (الاسم الصح اللي payment-service بيتحقق منه)
           proxyReq.setHeader(
-            'x-internal-secret',
+            'x-internal-key',
             process.env.INTERNAL_SECRET || '',
           );
+
           this.logger.debug(
             `[${routeKey}] ${req.method} ${req.url} → ${target}`,
           );
@@ -151,4 +140,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-}
+    }
