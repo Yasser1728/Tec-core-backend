@@ -9,22 +9,27 @@ export class ProxyService {
   private readonly services: Record<string, Options & { aliases?: string[] }> = {
     assets: {
       target: process.env.ASSET_SERVICE_URL || 'https://asset-service-production-54c4.up.railway.app',
-      pathRewrite: { '^/api/assets': '' },
+      pathRewrite: { '^/api/assets': '/assets' },
     },
     auth: {
       target: process.env.AUTH_SERVICE_URL || 'https://auth-service-pi.up.railway.app',
       pathRewrite: { '^/api/auth': '' },
     },
+
+    // ✅ /api/payment/create  → /payments/create
     payment: {
       target: process.env.PAYMENT_SERVICE_URL || 'https://payment-service-production-90e5.up.railway.app',
-      pathRewrite: { '^/api/payment': '' },
+      pathRewrite: { '^/api/payment': '/payments' },
       aliases: ['payments'],
     },
+
+    // ✅ /api/wallet → /wallets
     wallet: {
       target: process.env.WALLET_SERVICE_URL || 'https://wallet-service-production-445d.up.railway.app',
-      pathRewrite: { '^/api/wallet': '' },
+      pathRewrite: { '^/api/wallet': '/wallets' },
       aliases: ['wallets'],
     },
+
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
       pathRewrite: { '^/api/fundx': '' },
@@ -75,9 +80,13 @@ export class ProxyService {
 
       if (aliases && aliases.length > 0) {
         aliases.forEach((alias) => {
+          // ✅ alias pathRewrite يحافظ على نفس الـ target path
+          const originalTarget = (proxyOptions.pathRewrite as Record<string, string>);
+          const originalValue = Object.values(originalTarget)[0]; // '/payments' or '/wallets'
+
           const aliasOptions: Options = {
             ...proxyOptions,
-            pathRewrite: { [`^/api/${alias}`]: '' },
+            pathRewrite: { [`^/api/${alias}`]: originalValue },
           };
           this.registerSingleProxy(app, alias, aliasOptions);
         });
@@ -104,13 +113,11 @@ export class ProxyService {
           if (auth) {
             proxyReq.setHeader('Authorization', auth);
           }
-
-          // ✅ x-internal-key (الاسم الصح اللي payment-service بيتحقق منه)
+          // ✅ x-internal-key — الاسم الصح
           proxyReq.setHeader(
             'x-internal-key',
             process.env.INTERNAL_SECRET || '',
           );
-
           this.logger.debug(
             `[${routeKey}] ${req.method} ${req.url} → ${target}`,
           );
@@ -140,4 +147,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-    }
+                               }
