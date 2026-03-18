@@ -1,15 +1,7 @@
-import { IsString, IsEmail, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 
-export class LoginDto {
-  @IsEmail()
-  @IsOptional()
-  email?: string;
-
+export class PiLoginDto {
   @IsString()
-  @IsOptional()
-  password?: string;
-
-  @IsString()
-  @IsOptional()
-  pi_uid?: string;
+  @IsNotEmpty()
+  access_token: string;
 }
