@@ -14,10 +14,20 @@ export interface AuthUser {
 }
 
 export interface AuthResponse {
-  access_token: string;
-  token_type: 'Bearer';
-  expires_in: number;
-  user: AuthUser;
+  success: boolean;
+  isNewUser: boolean;
+  user: {
+    id: string;
+    piId: string;
+    piUsername: string;
+    role: string;
+    subscriptionPlan: string | null;
+    createdAt: string;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
 }
 
 export interface PiUserDTO {
