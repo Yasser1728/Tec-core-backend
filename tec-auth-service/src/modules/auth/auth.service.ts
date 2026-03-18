@@ -1,3 +1,4 @@
+// src/modules/auth/auth.service.ts
 import {
   Injectable, UnauthorizedException,
   ConflictException, BadRequestException, Logger,
@@ -123,9 +124,12 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        id: true, email: true, pi_uid: true,
-        pi_username: true, kyc_status: true,
-        role: true, created_at: true,
+        id: true,
+        pi_uid: true,
+        pi_username: true,
+        kyc_status: true,
+        role: true,
+        created_at: true,
       },
     });
     if (!user) throw new UnauthorizedException('User not found');
@@ -137,7 +141,6 @@ export class AuthService {
 
     const payload: TokenPayload = {
       sub: user.id,
-      email: user.email ?? undefined,
       pi_uid: user.pi_uid ?? undefined,
       pi_username: user.pi_username ?? undefined,
     };
@@ -165,4 +168,4 @@ export class AuthService {
       },
     };
   }
-      }
+}
