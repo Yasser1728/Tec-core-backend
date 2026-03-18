@@ -1,46 +1,23 @@
+import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../utils/jwt';
+import { JwtService } from '@nestjs/jwt';
 
-export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'AUTHENTICATION_ERROR',
-          message: 'No token provided',
-        },
-      });
-      return;
+@Injectable()
+export class AuthMiddleware implements NestMiddleware {
+  constructor(private readonly jwtService: JwtService) {}
+
+  use(req: Request, res: Response, next: NextFunction) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing token');
     }
-
-    const token = authHeader.substring(7);
-
-    const decoded = verifyAccessToken(token);
-    if (!decoded) {
-      res.status(401).json({
-        success: false,
-        error: {
-          code: 'AUTHENTICATION_ERROR',
-          message: 'Invalid or expired token',
-        },
-      });
-      return;
+    try {
+      const token = authHeader.split(' ')[1];
+      const payload = this.jwtService.verify(token);
+      req['user'] = payload;
+      next();
+    } catch {
+      throw new UnauthorizedException('Invalid token');
     }
-
-    // Set both req.userId and req.user so controllers can use either pattern
-    req.userId = decoded.userId;
-    req.user = { id: decoded.userId };
-    next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    res.status(401).json({
-      success: false,
-      error: {
-        code: 'AUTHENTICATION_ERROR',
-        message: 'Authentication failed',
-      },
-    });
   }
-};
+}
