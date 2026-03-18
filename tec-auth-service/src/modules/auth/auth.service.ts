@@ -1,6 +1,4 @@
 // src/modules/auth/auth.service.ts
-// TEC Auth Service v2.1 — All errors fixed
-
 import {
   Injectable,
   UnauthorizedException,
@@ -13,11 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import {
-  AuthResponse,
-  TokenPayload,
-  PiUserDTO,
-} from './auth.types';
+import { AuthResponse, TokenPayload, PiUserDTO } from './auth.types';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
 
@@ -33,27 +27,20 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  // ─────────────────────────────────────────
-  // Pi Network Login (PRIMARY)
-  // ─────────────────────────────────────────
+  // ─── Pi Network Login ─────────────────────────────────────────────────────
 
   async piLogin(piAccessToken: string): Promise<AuthResponse> {
-    if (!piAccessToken) {
+    if (!piAccessToken)
       throw new BadRequestException('Pi access token is required');
-    }
 
     const piUser = await this.verifyPiToken(piAccessToken);
 
     const user = await this.prisma.user.upsert({
       where: { pi_uid: piUser.uid },
-      update: {
-        pi_username: piUser.username,
-        last_login: new Date(),
-      },
+      update: { pi_username: piUser.username },
       create: {
         pi_uid: piUser.uid,
         pi_username: piUser.username,
-        last_login: new Date(),
       },
     });
 
@@ -67,54 +54,41 @@ export class AuthService {
         headers: { Authorization: `Bearer ${accessToken}` },
         timeout: 10000,
       });
-
-      if (!data.uid || !data.username) {
-        throw new UnauthorizedException('Invalid Pi token response');
-      }
-
+      if (!data.uid || !data.username)
+        throw new UnauthorizedException('Invalid Pi response');
       return { uid: data.uid, username: data.username };
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 401) {
-          throw new UnauthorizedException('Invalid or expired Pi token');
-        }
-      }
+      if (axios.isAxiosError(error) && error.response?.status === 401)
+        throw new UnauthorizedException('Invalid or expired Pi token');
       throw new UnauthorizedException('Failed to verify Pi token');
     }
   }
 
-  // ─────────────────────────────────────────
-  // Standard Auth
-  // ─────────────────────────────────────────
+  // ─── Register ─────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    if (!dto.email && !dto.pi_uid) {
-      throw new BadRequestException('Email or Pi UID is required');
-    }
-
     const conditions: any[] = [];
     if (dto.email) conditions.push({ email: dto.email });
     if (dto.pi_uid) conditions.push({ pi_uid: dto.pi_uid });
 
-    const existingUser = await this.prisma.user.findFirst({
+    if (conditions.length === 0)
+      throw new BadRequestException('Email or Pi UID is required');
+
+    const existing = await this.prisma.user.findFirst({
       where: { OR: conditions },
     });
+    if (existing) throw new ConflictException('User already exists');
 
-    if (existingUser) {
-      throw new ConflictException('User already exists');
-    }
-
-    const hashedPassword = dto.password
+    const password_hash = dto.password
       ? await bcrypt.hash(dto.password, this.SALT_ROUNDS)
       : null;
 
     const user = await this.prisma.user.create({
       data: {
         email: dto.email ?? null,
-        password: hashedPassword,
+        password_hash,
         pi_uid: dto.pi_uid ?? null,
         pi_username: dto.pi_username ?? null,
-        last_login: new Date(),
       },
     });
 
@@ -122,34 +96,33 @@ export class AuthService {
     return this.buildAuthResponse(user);
   }
 
+  // ─── Login ────────────────────────────────────────────────────────────────
+
   async login(dto: LoginDto): Promise<AuthResponse> {
     let user: any = null;
 
     if (dto.pi_uid) {
-      user = await this.prisma.user.findUnique({ where: { pi_uid: dto.pi_uid } });
+      user = await this.prisma.user.findUnique({
+        where: { pi_uid: dto.pi_uid },
+      });
       if (!user) throw new UnauthorizedException('Pi account not found');
     } else if (dto.email && dto.password) {
-      user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-      if (!user?.password) throw new UnauthorizedException('Invalid credentials');
+      user = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (!user?.password_hash)
+        throw new UnauthorizedException('Invalid credentials');
 
-      const valid = await bcrypt.compare(dto.password, user.password);
+      const valid = await bcrypt.compare(dto.password, user.password_hash);
       if (!valid) throw new UnauthorizedException('Invalid credentials');
     } else {
       throw new BadRequestException('Provide Pi UID or email + password');
     }
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { last_login: new Date() },
-    });
-
-    this.logger.log(`Login: ${user.email || user.pi_username}`);
     return this.buildAuthResponse(user);
   }
 
-  // ─────────────────────────────────────────
-  // Token Utilities
-  // ─────────────────────────────────────────
+  // ─── Token ────────────────────────────────────────────────────────────────
 
   async validateToken(token: string): Promise<TokenPayload> {
     try {
@@ -167,23 +140,19 @@ export class AuthService {
         email: true,
         pi_uid: true,
         pi_username: true,
+        kyc_status: true,
+        role: true,
         created_at: true,
-        last_login: true,
       },
     });
-
     if (!user) throw new UnauthorizedException('User not found');
     return user;
   }
 
-  // ─────────────────────────────────────────
-  // Private
-  // ─────────────────────────────────────────
+  // ─── Private ──────────────────────────────────────────────────────────────
 
   private buildAuthResponse(user: any): AuthResponse {
-    const expiresIn = Number(
-      this.configService.get<number>('JWT_EXPIRES_IN', 86400),
-    );
+    const expiresIn = Number(this.configService.get('JWT_EXPIRES_IN', 86400));
 
     const payload: TokenPayload = {
       sub: user.id,
