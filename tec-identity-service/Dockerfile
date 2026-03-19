@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 
 COPY . .
 RUN npx prisma generate
@@ -24,12 +24,11 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma/ ./prisma/
 
-RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+RUN npm install --only=production --ignore-scripts && npm cache clean --force
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
 
-# ✅ 5005
 EXPOSE 5005
 
 CMD ["sh", "-c", "npx prisma db push && node dist/main.js"]
