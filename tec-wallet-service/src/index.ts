@@ -1,9 +1,11 @@
 // tec-wallet-service/src/index.ts
 
+import dotenv from 'dotenv';
+dotenv.config(); // ✅ أول سطر قبل أي import
+
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import walletRoutes from './routes/wallet.routes';
 import { logger } from './utils/logger';
 import { validateInternalKey } from './middleware/internal-auth';
@@ -14,7 +16,6 @@ import { initSentry } from './infra/observability';
 import { env } from './config/env';
 import { startWalletEventConsumer } from './wallet-event-consumer';
 
-dotenv.config();
 initSentry();
 
 const app: Application = express();
@@ -119,7 +120,9 @@ app.use((
 app.listen(PORT, () => {
   logger.info(`💰 Wallet Service running on port ${PORT}`);
 
-  // ✅ ابدأ Event Consumer — async مع .catch
+  // ✅ debug log
+  logger.info(`REDIS_URL configured: ${!!process.env.REDIS_URL}`);
+
   if (process.env.REDIS_URL) {
     startWalletEventConsumer().catch((err) => {
       logger.error('❌ Wallet Event Consumer failed to start', {
