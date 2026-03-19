@@ -1,15 +1,3 @@
-/**
- * Sentry error-tracking initialisation for the Payment Service.
- *
- * Call initSentry() once at application start-up (before routes/middleware).
- * Sentry is only activated when SENTRY_DSN is set and NODE_ENV is not
- * 'development' or 'test', so local development stays noise-free.
- *
- * Captured events:
- *   - Unhandled exceptions (via Sentry's default integration)
- *   - Unhandled promise rejections
- *   - Errors forwarded explicitly via Sentry.captureException(err)
- */
 import * as Sentry from '@sentry/node';
 
 let sentryInitialised = false;
@@ -18,8 +6,8 @@ export function initSentry(): void {
   const dsn = process.env.SENTRY_DSN;
   const environment = process.env.NODE_ENV ?? 'production';
   const serviceName = process.env.SERVICE_NAME ?? 'payment-service';
+  const release = process.env.SERVICE_VERSION ?? '1.0.0';
 
-  // Disabled in local development / test to avoid noise.
   if (!dsn || environment === 'development' || environment === 'test') {
     return;
   }
@@ -27,18 +15,49 @@ export function initSentry(): void {
   Sentry.init({
     dsn,
     environment,
+    release: `${serviceName}@${release}`,
     initialScope: {
       tags: { service: serviceName },
     },
-    tracesSampleRate: 0.1,
+    tracesSampleRate: environment === 'production' ? 0.1 : 1.0,
+    // ✅ أضفنا
+    integrations: [
+      Sentry.extraErrorDataIntegration(),
+    ],
+    beforeSend(event) {
+      // ✅ امسح أي sensitive data
+      if (event.request?.headers) {
+        delete event.request.headers['authorization'];
+        delete event.request.headers['x-internal-key'];
+      }
+      return event;
+    },
   });
 
-  // Capture unhandled promise rejections that may slip past Express.
+  // ✅ Capture unhandled rejections
   process.on('unhandledRejection', (reason) => {
     Sentry.captureException(reason);
   });
 
+  // ✅ Capture uncaught exceptions
+  process.on('uncaughtException', (error) => {
+    Sentry.captureException(error);
+    process.exit(1);
+  });
+
   sentryInitialised = true;
+  console.log(`[Sentry] Initialised for ${serviceName} (${environment})`);
+}
+
+export function captureError(
+  error: Error,
+  context?: Record<string, unknown>,
+): void {
+  if (!sentryInitialised) return;
+  Sentry.withScope((scope) => {
+    if (context) scope.setExtras(context);
+    Sentry.captureException(error);
+  });
 }
 
 export function isSentryEnabled(): boolean {
