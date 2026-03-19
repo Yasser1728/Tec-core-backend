@@ -16,7 +16,6 @@ export class IdentityController {
     private readonly jwtService: JwtService,
   ) {}
 
-  // ✅ استخرج userId + piUserId + username من الـ JWT
   private getUserIdAndInfo(authorization: string): {
     userId: string;
     piUserId: string;
@@ -30,8 +29,10 @@ export class IdentityController {
       const decoded = this.jwtService.verify(token) as any;
       return {
         userId: decoded.sub ?? decoded.id ?? decoded.userId,
-        piUserId: decoded.piId ?? decoded.pi_user_id ?? decoded.sub,
-        username: decoded.username ?? decoded.piUsername ?? 'unknown',
+        // ✅ pi_uid هو الاسم الصح في الـ JWT
+        piUserId: decoded.pi_uid ?? decoded.piId ?? decoded.pi_user_id ?? decoded.sub,
+        // ✅ pi_username هو الاسم الصح في الـ JWT
+        username: decoded.pi_username ?? decoded.username ?? decoded.piUsername ?? 'unknown',
       };
     } catch {
       throw new UnauthorizedException('Invalid token');
@@ -104,4 +105,4 @@ export class IdentityController {
     const roles = user.roles.map((ur) => ur.role.name);
     return { success: true, data: { roles } };
   }
-      }
+}
