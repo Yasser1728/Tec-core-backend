@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(uuid())
+  pi_user_id  String    @unique
+  username    String    @unique
+  email       String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  profile     Profile?
+  kyc         Kyc?
+  roles       UserRole[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+
+  @@index([pi_user_id])
+  @@index([username])
+  @@map("users")
+}
+
+model Profile {
+  id           String   @id @default(uuid())
+  user_id      String   @unique
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  display_name String?
+  avatar_url   String?
+  bio          String?
+  country      String?
+  language     String   @default("en")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum KycLevel {
+  L1
+  L2
+  L3
+}
+
+model Kyc {
+  id          String    @id @default(uuid())
+  user_id     String    @unique
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status      KycStatus @default(PENDING)
+  level       KycLevel  @default(L1)
+  verified_at DateTime?
+  rejected_at DateTime?
+  metadata    Json?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@index([status])
+  @@map("kyc")
+}
+
+enum RoleName {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+model Role {
+  id        String     @id @default(uuid())
+  name      RoleName   @unique
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id         String   @id @default(uuid())
+  user_id    String
+  role_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [role_id], references: [id])
+  created_at DateTime @default(now())
+
+  @@unique([user_id, role_id])
+  @@map("user_roles")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  device     String?
+  ip         String?
+  created_at DateTime @default(now())
+  expires_at DateTime
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("sessions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  action     String
+  entity     String?
+  entity_id  String?
+  metadata   Json?
+  ip         String?
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@index([created_at])
+  @@map("identity_audit_logs")
+}
