@@ -15,21 +15,21 @@ export class ProxyService {
       target: process.env.AUTH_SERVICE_URL || 'https://auth-service-pi.up.railway.app',
       pathRewrite: { '^/api/auth': '' },
     },
-
-    // ✅ /api/payment/create  → /payments/create
     payment: {
       target: process.env.PAYMENT_SERVICE_URL || 'https://payment-service-production-90e5.up.railway.app',
       pathRewrite: { '^/api/payment': '/payments' },
       aliases: ['payments'],
     },
-
-    // ✅ /api/wallet → /wallets
     wallet: {
       target: process.env.WALLET_SERVICE_URL || 'https://wallet-service-production-445d.up.railway.app',
       pathRewrite: { '^/api/wallet': '/wallets' },
       aliases: ['wallets'],
     },
-
+    // ✅ Identity Service
+    identity: {
+      target: process.env.IDENTITY_SERVICE_URL || 'https://identity-service-production-fe57.up.railway.app',
+      pathRewrite: { '^/api/identity': '/identity' },
+    },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
       pathRewrite: { '^/api/fundx': '' },
@@ -37,10 +37,6 @@ export class ProxyService {
     nexus: {
       target: process.env.NEXUS_SERVICE_URL || 'https://nexus-service.up.railway.app',
       pathRewrite: { '^/api/nexus': '' },
-    },
-    identity: {
-      target: process.env.IDENTITY_SERVICE_URL || 'https://identity-service.up.railway.app',
-      pathRewrite: { '^/api/identity': '' },
     },
     analytics: {
       target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service.up.railway.app',
@@ -80,9 +76,8 @@ export class ProxyService {
 
       if (aliases && aliases.length > 0) {
         aliases.forEach((alias) => {
-          // ✅ alias pathRewrite يحافظ على نفس الـ target path
           const originalTarget = (proxyOptions.pathRewrite as Record<string, string>);
-          const originalValue = Object.values(originalTarget)[0]; // '/payments' or '/wallets'
+          const originalValue = Object.values(originalTarget)[0];
 
           const aliasOptions: Options = {
             ...proxyOptions,
@@ -113,7 +108,6 @@ export class ProxyService {
           if (auth) {
             proxyReq.setHeader('Authorization', auth);
           }
-          // ✅ x-internal-key — الاسم الصح
           proxyReq.setHeader(
             'x-internal-key',
             process.env.INTERNAL_SECRET || '',
@@ -147,4 +141,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-                               }
+                   }
