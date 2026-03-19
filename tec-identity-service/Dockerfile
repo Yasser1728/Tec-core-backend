@@ -29,6 +29,7 @@ RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 5004
+# ✅ 5005
+EXPOSE 5005
 
 CMD ["sh", "-c", "npx prisma db push && node dist/main.js"]
