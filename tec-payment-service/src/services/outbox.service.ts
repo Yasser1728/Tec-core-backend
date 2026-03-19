@@ -1,20 +1,20 @@
 import { prisma } from '../config/database';
 import { logInfo, logWarn } from '../utils/logger';
+import { Prisma } from '@prisma/client';
 
 export interface OutboxEventData {
   streamName: string;
   payload: Record<string, unknown>;
 }
 
-// ✅ احفظ الـ event في الـ DB داخل نفس الـ transaction
 export const saveOutboxEvent = async (
-  tx: any,
+  tx: Prisma.TransactionClient,
   data: OutboxEventData,
 ): Promise<void> => {
   await tx.outboxEvent.create({
     data: {
       stream_name: data.streamName,
-      payload: data.payload,
+      payload: data.payload as Prisma.InputJsonValue, // ✅ cast صح
       status: 'pending',
       next_retry: new Date(),
     },
@@ -22,18 +22,16 @@ export const saveOutboxEvent = async (
 
   logInfo('Outbox event saved', {
     streamName: data.streamName,
-    payload: data.payload,
   });
 };
 
-// ✅ احفظ الـ event خارج transaction (fallback)
 export const saveOutboxEventDirect = async (
   data: OutboxEventData,
 ): Promise<void> => {
   await prisma.outboxEvent.create({
     data: {
       stream_name: data.streamName,
-      payload: data.payload,
+      payload: data.payload as Prisma.InputJsonValue, // ✅ cast صح
       status: 'pending',
       next_retry: new Date(),
     },
@@ -44,20 +42,6 @@ export const saveOutboxEventDirect = async (
   });
 };
 
-// ✅ جيب الـ pending events اللي جاهزة للإرسال
-export const getPendingEvents = async (limit = 10) => {
-  return prisma.outboxEvent.findMany({
-    where: {
-      status: { in: ['pending', 'failed'] },
-      attempts: { lt: prisma.outboxEvent.fields.max_attempts },
-      next_retry: { lte: new Date() },
-    },
-    orderBy: { created_at: 'asc' },
-    take: limit,
-  });
-};
-
-// ✅ حدّث status لـ published
 export const markEventPublished = async (id: string): Promise<void> => {
   await prisma.outboxEvent.update({
     where: { id },
@@ -68,7 +52,6 @@ export const markEventPublished = async (id: string): Promise<void> => {
   });
 };
 
-// ✅ حدّث status لـ failed مع retry
 export const markEventFailed = async (
   id: string,
   error: string,
@@ -76,8 +59,6 @@ export const markEventFailed = async (
   maxAttempts: number,
 ): Promise<void> => {
   const isFinal = attempts >= maxAttempts;
-
-  // Exponential backoff: 1s, 2s, 4s, 8s, 16s
   const delayMs = Math.min(1000 * 2 ** attempts, 60000);
   const nextRetry = new Date(Date.now() + delayMs);
 
