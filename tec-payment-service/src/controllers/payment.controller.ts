@@ -2,45 +2,43 @@ import { Request, Response } from 'express';
 import { validationResult, ValidationError } from 'express-validator';
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { 
+import {
   PrismaClientKnownRequestError,
   PrismaClientInitializationError,
-  PrismaClientRustPanicError 
+  PrismaClientRustPanicError,
 } from '@prisma/client/runtime/library';
 import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
 import { piApprovePayment, piCompletePayment, PiApiError } from '../services/payment.service';
-import { creditTecWallet } from '../services/wallet.service';
 import { env } from '../config/env';
+// ✅ حذفنا: import { creditTecWallet } from '../services/wallet.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
-// Helper function to safely get metadata as an object
 const getMetadataObject = (metadata: unknown): Record<string, unknown> => {
-  return typeof metadata === 'object' && metadata !== null ? metadata as Record<string, unknown> : {};
+  return typeof metadata === 'object' && metadata !== null
+    ? (metadata as Record<string, unknown>)
+    : {};
 };
 
-// Helper to get client IP
 const getClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'] as string | undefined;
   if (forwarded) return forwarded.split(',')[0].trim();
   return req.socket.remoteAddress ?? 'unknown';
 };
 
-// ─── Allowed state transitions ────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  created:   ['approved', 'cancelled', 'failed'],
-  approved:  ['completed', 'cancelled', 'failed'],
+  created: ['approved', 'cancelled', 'failed'],
+  approved: ['completed', 'cancelled', 'failed'],
 };
 
 const isTransitionAllowed = (from: string, to: string): boolean =>
   (ALLOWED_TRANSITIONS[from] ?? []).includes(to);
 
-// ─── Max amount limit ─────────────────────────────────────────────────────────
 const getMaxAmountLimit = (): number =>
   parseFloat(process.env.MAX_AMOUNT_LIMIT ?? '1000000');
 
-// Create a new payment (Stage 1: Created)
+// ─── Create Payment ───────────────────────────────────────
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
@@ -88,7 +86,11 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       },
     });
 
-    logInfo('Payment created successfully', { paymentId: payment.id, status: payment.status, requestId: req.requestId });
+    logInfo('Payment created successfully', {
+      paymentId: payment.id,
+      status: payment.status,
+      requestId: req.requestId,
+    });
 
     void createAuditLog({
       userId,
@@ -99,59 +101,43 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       requestId: req.requestId,
     });
 
-    res.status(201).json({
-      success: true,
-      data: { payment },
-    });
+    res.status(201).json({ success: true, data: { payment } });
   } catch (error) {
     logError('CreatePayment error', { error: (error as Error).message });
-    
+
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {
         res.status(409).json({
           success: false,
-          error: {
-            code: 'DUPLICATE_PAYMENT',
-            message: 'A payment with this information already exists',
-          },
+          error: { code: 'DUPLICATE_PAYMENT', message: 'A payment with this information already exists' },
         });
         return;
       }
       if (error.code === 'P2003') {
         res.status(400).json({
           success: false,
-          error: {
-            code: 'INVALID_USER',
-            message: 'User ID does not exist in the system',
-          },
+          error: { code: 'INVALID_USER', message: 'User ID does not exist in the system' },
         });
         return;
       }
     }
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
       });
       return;
     }
-    
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to create payment',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to create payment' },
     });
   }
 };
 
-// Approve a payment (Stage 2: Approved)
+// ─── Approve Payment ──────────────────────────────────────
 export const approvePayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
@@ -161,7 +147,7 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -177,37 +163,26 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
     if (pi_payment_id && (!env.PI_API_KEY || !env.PI_APP_ID)) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'SERVICE_NOT_CONFIGURED',
-          message: 'Pi Network credentials are not configured. Contact the administrator.',
-        },
+        error: { code: 'SERVICE_NOT_CONFIGURED', message: 'Pi Network credentials are not configured.' },
       });
       return;
     }
 
     logInfo('Approving payment', { payment_id, pi_payment_id, requestId: req.requestId });
 
-    const payment = await prisma.payment.findUnique({
-      where: { id: payment_id },
-    });
+    const payment = await prisma.payment.findUnique({ where: { id: payment_id } });
 
     if (!payment) {
-      logWarn('Payment not found', { payment_id });
       res.status(404).json({
         success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Payment not found',
-        },
+        error: { code: 'NOT_FOUND', message: 'Payment not found' },
       });
       return;
     }
 
     if (!isTransitionAllowed(payment.status, 'approved')) {
-      const userId = payment.user_id;
-      logWarn('Invalid transition attempt: approve', { payment_id, from: payment.status, to: 'approved' });
       void createAuditLog({
-        userId,
+        userId: payment.user_id,
         paymentId: payment_id,
         eventType: 'INVALID_TRANSITION_ATTEMPT',
         metadata: { from: payment.status, to: 'approved' },
@@ -232,7 +207,6 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
           await piApprovePayment(pi_payment_id);
         } catch (piErr) {
           if (piErr instanceof PiApiError) {
-            logWarn('Pi API approve error', { payment_id, code: piErr.code, message: piErr.message });
             res.status(piErr.httpStatus).json({
               success: false,
               error: { code: piErr.code, message: piErr.message },
@@ -246,14 +220,10 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
 
     const updatedPayment = await prisma.payment.update({
       where: { id: payment_id },
-      data: {
-        status: 'approved',
-        pi_payment_id,
-        approved_at: new Date(),
-      },
+      data: { status: 'approved', pi_payment_id, approved_at: new Date() },
     });
 
-    logInfo('Payment approved successfully', { paymentId: updatedPayment.id, status: updatedPayment.status });
+    logInfo('Payment approved successfully', { paymentId: updatedPayment.id });
 
     void createAuditLog({
       userId: payment.user_id,
@@ -264,59 +234,43 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       requestId: req.requestId,
     });
 
-    res.json({
-      success: true,
-      data: { payment: updatedPayment },
-    });
+    res.json({ success: true, data: { payment: updatedPayment } });
   } catch (error) {
     logError('ApprovePayment error', { error: (error as Error).message });
-    
+
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2025') {
         res.status(410).json({
           success: false,
-          error: {
-            code: 'PAYMENT_MODIFIED',
-            message: 'Payment was modified or deleted during approval',
-          },
+          error: { code: 'PAYMENT_MODIFIED', message: 'Payment was modified or deleted during approval' },
         });
         return;
       }
       if (error.code === 'P2002') {
         res.status(409).json({
           success: false,
-          error: {
-            code: 'DUPLICATE_PI_PAYMENT',
-            message: 'This Pi payment ID is already associated with another payment',
-          },
+          error: { code: 'DUPLICATE_PI_PAYMENT', message: 'This Pi payment ID is already associated with another payment' },
         });
         return;
       }
     }
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
       });
       return;
     }
-    
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to approve payment',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to approve payment' },
     });
   }
 };
 
-// Complete a payment atomically (Stage 3: Completed / Confirm)
+// ─── Complete Payment ─────────────────────────────────────
 export const completePayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
@@ -326,7 +280,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -338,7 +292,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     const { payment_id, transaction_id } = req.body;
-    
+
     logInfo('Completing payment', { payment_id, transaction_id, requestId: req.requestId });
 
     const preFlightPayment = await prisma.payment.findUnique({
@@ -347,7 +301,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     });
 
     if (!preFlightPayment) {
-      logWarn('Payment not found (pre-flight)', { payment_id });
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Payment not found' },
@@ -356,7 +309,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (!isTransitionAllowed(preFlightPayment.status, 'completed')) {
-      logWarn('Invalid transition attempt: complete (pre-flight)', { payment_id, from: preFlightPayment.status });
       void createAuditLog({
         userId: preFlightPayment.user_id,
         paymentId: payment_id,
@@ -377,23 +329,22 @@ export const completePayment = async (req: Request, res: Response): Promise<void
 
     if (preFlightPayment.payment_method === 'pi' && preFlightPayment.pi_payment_id) {
       if (env.PI_SANDBOX === 'true') {
-        logInfo('Sandbox mode: skipping Pi API complete call', { payment_id, pi_payment_id: preFlightPayment.pi_payment_id });
+        logInfo('Sandbox mode: skipping Pi API complete call', { payment_id });
       } else {
         if (!env.PI_API_KEY || !env.PI_APP_ID) {
           res.status(503).json({
             success: false,
-            error: {
-              code: 'SERVICE_NOT_CONFIGURED',
-              message: 'Pi Network credentials are not configured. Contact the administrator.',
-            },
+            error: { code: 'SERVICE_NOT_CONFIGURED', message: 'Pi Network credentials are not configured.' },
           });
           return;
         }
         try {
-          await piCompletePayment(preFlightPayment.pi_payment_id, transaction_id as string | undefined);
+          await piCompletePayment(
+            preFlightPayment.pi_payment_id,
+            transaction_id as string | undefined,
+          );
         } catch (piErr) {
           if (piErr instanceof PiApiError) {
-            logWarn('Pi API complete error', { payment_id, code: piErr.code, message: piErr.message });
             res.status(piErr.httpStatus).json({
               success: false,
               error: { code: piErr.code, message: piErr.message },
@@ -406,9 +357,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     const updatedPayment = await prisma.$transaction(async (tx: TransactionClient) => {
-      const payment = await tx.payment.findUnique({
-        where: { id: payment_id },
-      });
+      const payment = await tx.payment.findUnique({ where: { id: payment_id } });
 
       if (!payment) {
         const err = new Error('NOT_FOUND');
@@ -437,7 +386,7 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       });
     });
 
-    logInfo('Payment completed successfully', { paymentId: updatedPayment.id, status: updatedPayment.status });
+    logInfo('Payment completed successfully', { paymentId: updatedPayment.id });
 
     void createAuditLog({
       userId: updatedPayment.user_id,
@@ -448,24 +397,35 @@ export const completePayment = async (req: Request, res: Response): Promise<void
       requestId: req.requestId,
     });
 
-    res.json({
-      success: true,
-      data: { payment: updatedPayment },
-    });
+    res.json({ success: true, data: { payment: updatedPayment } });
 
+    // ✅ Event Bus بدل Direct HTTP call
     if (updatedPayment.payment_method === 'pi') {
-      void creditTecWallet(
-        updatedPayment.user_id,
-        updatedPayment.amount,
-        payment_id,
-        req.requestId,
-      );
+      void (async () => {
+        try {
+          const { publishEvent, createPublisher, EVENTS } = await import('../services/event-bus');
+          const pub = (global as any).__redisPublisher ?? createPublisher();
+          await publishEvent(pub, EVENTS.PAYMENT_COMPLETED, {
+            paymentId: payment_id,
+            userId: updatedPayment.user_id,
+            amount: updatedPayment.amount,
+            currency: updatedPayment.currency,
+            piPaymentId: preFlightPayment.pi_payment_id ?? '',
+            timestamp: new Date().toISOString(),
+          });
+          logInfo('payment.completed event emitted', { paymentId: payment_id });
+        } catch (err) {
+          logWarn('Failed to emit payment.completed event', {
+            error: (err as Error).message,
+            paymentId: payment_id,
+          });
+        }
+      })();
     }
   } catch (error) {
     const err = error as Error & { statusCode?: number; from?: string };
 
     if (err.message === 'NOT_FOUND') {
-      logWarn('Payment not found', { body: req.body });
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Payment not found' },
@@ -474,7 +434,6 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     if (err.message === 'INVALID_TRANSITION') {
-      logWarn('Invalid transition attempt: complete', { payment_id: req.body.payment_id, from: err.from });
       void createAuditLog({
         userId: req.userId ?? 'unknown',
         paymentId: req.body.payment_id,
@@ -494,53 +453,40 @@ export const completePayment = async (req: Request, res: Response): Promise<void
     }
 
     logError('CompletePayment error', { error: err.message });
-    
-    if (error instanceof PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        res.status(410).json({
-          success: false,
-          error: {
-            code: 'PAYMENT_MODIFIED',
-            message: 'Payment was modified or deleted during completion',
-          },
-        });
-        return;
-      }
-    }
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
-      res.status(503).json({
+
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(410).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'PAYMENT_MODIFIED', message: 'Payment was modified or deleted during completion' },
       });
       return;
     }
-    
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
+      res.status(503).json({
+        success: false,
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to complete payment',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to complete payment' },
     });
   }
 };
 
-// Get payment status
+// ─── Get Payment Status ───────────────────────────────────
 export const getPaymentStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      logWarn('GetPaymentStatus validation failed', { errors: errors.array(), params: req.params });
       res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -573,57 +519,42 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
     });
 
     if (!payment) {
-      logWarn('Payment not found', { id });
       res.status(404).json({
         success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Payment not found',
-        },
+        error: { code: 'NOT_FOUND', message: 'Payment not found' },
       });
       return;
     }
 
-    res.json({
-      success: true,
-      data: { payment },
-    });
+    res.json({ success: true, data: { payment } });
   } catch (error) {
     logError('GetPaymentStatus error', { error: (error as Error).message });
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
       });
       return;
     }
-    
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to get payment status',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to get payment status' },
     });
   }
 };
 
-// Cancel a payment atomically
+// ─── Cancel Payment ───────────────────────────────────────
 export const cancelPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      logWarn('CancelPayment validation failed', { errors: errors.array(), body: req.body });
       res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -635,13 +566,11 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
     }
 
     const { payment_id } = req.body;
-    
+
     logInfo('Cancelling payment', { payment_id, requestId: req.requestId });
 
     const updatedPayment = await prisma.$transaction(async (tx: TransactionClient) => {
-      const payment = await tx.payment.findUnique({
-        where: { id: payment_id },
-      });
+      const payment = await tx.payment.findUnique({ where: { id: payment_id } });
 
       if (!payment) {
         const err = new Error('NOT_FOUND');
@@ -658,14 +587,11 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
 
       return tx.payment.update({
         where: { id: payment_id },
-        data: {
-          status: 'cancelled',
-          cancelled_at: new Date(),
-        },
+        data: { status: 'cancelled', cancelled_at: new Date() },
       });
     });
 
-    logInfo('Payment cancelled successfully', { paymentId: updatedPayment.id, status: updatedPayment.status });
+    logInfo('Payment cancelled successfully', { paymentId: updatedPayment.id });
 
     void createAuditLog({
       userId: updatedPayment.user_id,
@@ -676,15 +602,11 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
       requestId: req.requestId,
     });
 
-    res.json({
-      success: true,
-      data: { payment: updatedPayment },
-    });
+    res.json({ success: true, data: { payment: updatedPayment } });
   } catch (error) {
     const err = error as Error & { statusCode?: number; from?: string };
 
     if (err.message === 'NOT_FOUND') {
-      logWarn('Payment not found', { body: req.body });
       res.status(404).json({
         success: false,
         error: { code: 'NOT_FOUND', message: 'Payment not found' },
@@ -693,15 +615,6 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
     }
 
     if (err.message === 'INVALID_TRANSITION') {
-      logWarn('Invalid transition attempt: cancel', { payment_id: req.body.payment_id, from: err.from });
-      void createAuditLog({
-        userId: req.userId ?? 'unknown',
-        paymentId: req.body.payment_id,
-        eventType: 'INVALID_TRANSITION_ATTEMPT',
-        metadata: { from: err.from, to: 'cancelled' },
-        ipAddress: getClientIp(req),
-        requestId: req.requestId,
-      });
       res.status(409).json({
         success: false,
         error: {
@@ -713,53 +626,40 @@ export const cancelPayment = async (req: Request, res: Response): Promise<void> 
     }
 
     logError('CancelPayment error', { error: err.message });
-    
-    if (error instanceof PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        res.status(410).json({
-          success: false,
-          error: {
-            code: 'PAYMENT_MODIFIED',
-            message: 'Payment was modified or deleted during cancellation',
-          },
-        });
-        return;
-      }
-    }
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
-      res.status(503).json({
+
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(410).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'PAYMENT_MODIFIED', message: 'Payment was modified or deleted during cancellation' },
       });
       return;
     }
-    
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
+      res.status(503).json({
+        success: false,
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to cancel payment',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to cancel payment' },
     });
   }
 };
 
-// Fail a payment
+// ─── Fail Payment ─────────────────────────────────────────
 export const failPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      logWarn('FailPayment validation failed', { errors: errors.array(), body: req.body });
       res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -771,35 +671,20 @@ export const failPayment = async (req: Request, res: Response): Promise<void> =>
     }
 
     const { payment_id, reason } = req.body;
-    
+
     logInfo('Failing payment', { payment_id, reason, requestId: req.requestId });
 
-    const payment = await prisma.payment.findUnique({
-      where: { id: payment_id },
-    });
+    const payment = await prisma.payment.findUnique({ where: { id: payment_id } });
 
     if (!payment) {
-      logWarn('Payment not found', { payment_id });
       res.status(404).json({
         success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Payment not found',
-        },
+        error: { code: 'NOT_FOUND', message: 'Payment not found' },
       });
       return;
     }
 
     if (!isTransitionAllowed(payment.status, 'failed')) {
-      logWarn('Invalid transition attempt: fail', { payment_id, from: payment.status });
-      void createAuditLog({
-        userId: payment.user_id,
-        paymentId: payment_id,
-        eventType: 'INVALID_TRANSITION_ATTEMPT',
-        metadata: { from: payment.status, to: 'failed' },
-        ipAddress: getClientIp(req),
-        requestId: req.requestId,
-      });
       res.status(409).json({
         success: false,
         error: {
@@ -822,7 +707,7 @@ export const failPayment = async (req: Request, res: Response): Promise<void> =>
       },
     });
 
-    logInfo('Payment failed successfully', { paymentId: updatedPayment.id, status: updatedPayment.status });
+    logInfo('Payment failed successfully', { paymentId: updatedPayment.id });
 
     void createAuditLog({
       userId: payment.user_id,
@@ -833,54 +718,38 @@ export const failPayment = async (req: Request, res: Response): Promise<void> =>
       requestId: req.requestId,
     });
 
-    res.json({
-      success: true,
-      data: { payment: updatedPayment },
-    });
+    res.json({ success: true, data: { payment: updatedPayment } });
   } catch (error) {
     logError('FailPayment error', { error: (error as Error).message });
-    
-    if (error instanceof PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        res.status(410).json({
-          success: false,
-          error: {
-            code: 'PAYMENT_MODIFIED',
-            message: 'Payment was modified or deleted during failure recording',
-          },
-        });
-        return;
-      }
-    }
-    
-    if (error instanceof PrismaClientInitializationError || 
-        error instanceof PrismaClientRustPanicError) {
-      res.status(503).json({
+
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(410).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'PAYMENT_MODIFIED', message: 'Payment was modified or deleted during failure recording' },
       });
       return;
     }
-    
+
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
+      res.status(503).json({
+        success: false,
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
+      });
+      return;
+    }
+
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to record payment failure',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to record payment failure' },
     });
   }
 };
 
-// Get payment history for authenticated user
+// ─── Get Payment History ──────────────────────────────────
 export const getPaymentHistory = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      logWarn('GetPaymentHistory validation failed', { errors: errors.array(), query: req.query });
       res.status(400).json({
         success: false,
         error: {
@@ -905,13 +774,13 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const page = parseInt(req.query.page as string ?? '1', 10) || 1;
-    const limit = parseInt(req.query.limit as string ?? '20', 10) || 20;
+    const page = parseInt((req.query.page as string) ?? '1', 10) || 1;
+    const limit = parseInt((req.query.limit as string) ?? '20', 10) || 20;
     const status = req.query.status as string | undefined;
     const payment_method = req.query.payment_method as string | undefined;
     const from = req.query.from as string | undefined;
     const to = req.query.to as string | undefined;
-    const sort = (req.query.sort as string ?? 'desc') === 'asc' ? 'asc' : 'desc';
+    const sort = ((req.query.sort as string) ?? 'desc') === 'asc' ? 'asc' : 'desc';
 
     const where: Record<string, unknown> = { user_id: userId };
     if (status) where['status'] = status;
@@ -922,8 +791,6 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
         ...(to ? { lte: new Date(to) } : {}),
       };
     }
-
-    logInfo('Fetching payment history', { userId, page, limit, status, payment_method, sort, requestId: req.requestId });
 
     const [payments, total] = await Promise.all([
       prisma.payment.findMany({
@@ -968,39 +835,31 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
   } catch (error) {
     logError('GetPaymentHistory error', { error: (error as Error).message });
 
-    if (error instanceof PrismaClientInitializationError ||
-        error instanceof PrismaClientRustPanicError) {
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
       });
       return;
     }
 
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to retrieve payment history',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve payment history' },
     });
   }
 };
 
-// Resolve an incomplete payment by Pi payment ID (called from frontend handleIncompletePayment)
+// ─── Resolve Incomplete Payment ───────────────────────────
 export const resolveIncompletePayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      logWarn('ResolveIncompletePayment validation failed', { errors: errors.array(), body: req.body });
       res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: 'Invalid input data. Please check the request parameters.',
+          message: 'Invalid input data.',
           details: errors.array().map((err: ValidationError) => ({
             field: 'path' in err ? err.path : 'unknown',
             message: err.msg,
@@ -1014,19 +873,15 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
     const { pi_payment_id } = req.body;
     logInfo('Resolving incomplete payment', { pi_payment_id, requestId: req.requestId });
 
-    const payment = await prisma.payment.findUnique({
-      where: { pi_payment_id },
-    });
+    const payment = await prisma.payment.findUnique({ where: { pi_payment_id } });
 
     if (!payment) {
-      logInfo('No payment found for pi_payment_id — treating as not_found', { pi_payment_id });
       res.json({ success: true, data: { action: 'not_found' } });
       return;
     }
 
     const TERMINAL_STATUSES = ['completed', 'cancelled', 'failed'];
     if (TERMINAL_STATUSES.includes(payment.status)) {
-      logInfo('Payment already in terminal status', { pi_payment_id, paymentId: payment.id, status: payment.status });
       res.json({ success: true, data: { action: 'already_resolved' } });
       return;
     }
@@ -1034,12 +889,8 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
     if (payment.status === 'created') {
       await prisma.payment.update({
         where: { id: payment.id },
-        data: {
-          status: 'cancelled',
-          cancelled_at: new Date(),
-        },
+        data: { status: 'cancelled', cancelled_at: new Date() },
       });
-      logInfo('Stale created payment cancelled', { pi_payment_id, paymentId: payment.id });
       void createAuditLog({
         userId: payment.user_id,
         paymentId: payment.id,
@@ -1055,44 +906,26 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
     if (payment.status === 'approved') {
       if (payment.payment_method === 'pi' && payment.pi_payment_id) {
         if (env.PI_SANDBOX === 'true') {
-          logInfo('Sandbox mode: skipping Pi API complete call for resolve-incomplete', { pi_payment_id, paymentId: payment.id });
+          logInfo('Sandbox mode: skipping Pi API complete for resolve-incomplete', { pi_payment_id });
         } else {
           if (!env.PI_API_KEY || !env.PI_APP_ID) {
             res.status(503).json({
               success: false,
-              error: {
-                code: 'SERVICE_NOT_CONFIGURED',
-                message: 'Pi Network credentials are not configured. Contact the administrator.',
-              },
+              error: { code: 'SERVICE_NOT_CONFIGURED', message: 'Pi Network credentials not configured.' },
             });
             return;
           }
           try {
-            // transaction_id is unavailable here (the original onReadyForServerCompletion
-            // callback was never completed), so we pass undefined and let Pi Network
-            // complete the payment without a client-side txid.
             await piCompletePayment(payment.pi_payment_id, undefined);
           } catch (piErr) {
             if (piErr instanceof PiApiError) {
-              logWarn('Pi API complete error during resolve-incomplete', { pi_payment_id, paymentId: payment.id, code: piErr.code, message: piErr.message });
               await prisma.payment.update({
                 where: { id: payment.id },
                 data: {
                   status: 'failed',
                   failed_at: new Date(),
-                  metadata: {
-                    ...getMetadataObject(payment.metadata),
-                    failure_reason: piErr.message,
-                  },
+                  metadata: { ...getMetadataObject(payment.metadata), failure_reason: piErr.message },
                 },
-              });
-              void createAuditLog({
-                userId: payment.user_id,
-                paymentId: payment.id,
-                eventType: 'PAYMENT_FAILED',
-                metadata: { reason: 'resolve_incomplete_pi_error', pi_payment_id, error: piErr.message },
-                ipAddress: getClientIp(req),
-                requestId: req.requestId,
               });
               res.json({ success: true, data: { action: 'failed' } });
               return;
@@ -1104,12 +937,8 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
 
       await prisma.payment.update({
         where: { id: payment.id },
-        data: {
-          status: 'completed',
-          completed_at: new Date(),
-        },
+        data: { status: 'completed', completed_at: new Date() },
       });
-      logInfo('Approved payment completed during resolve-incomplete', { pi_payment_id, paymentId: payment.id });
       void createAuditLog({
         userId: payment.user_id,
         paymentId: payment.id,
@@ -1122,35 +951,26 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
       return;
     }
 
-    // Fallback: unexpected status — treat as already resolved
-    logWarn('Unexpected payment status in resolveIncompletePayment', { pi_payment_id, paymentId: payment.id, status: payment.status });
     res.json({ success: true, data: { action: 'already_resolved' } });
   } catch (error) {
     logError('ResolveIncompletePayment error', { error: (error as Error).message });
 
-    if (error instanceof PrismaClientInitializationError ||
-        error instanceof PrismaClientRustPanicError) {
+    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
       res.status(503).json({
         success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
-        },
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
       });
       return;
     }
 
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to resolve incomplete payment',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to resolve incomplete payment' },
     });
   }
 };
 
-// Trigger stale payment reconciliation (internal/admin)
+// ─── Trigger Reconciliation ───────────────────────────────
 export const triggerReconciliation = async (req: Request, res: Response): Promise<void> => {
   try {
     logInfo('Reconciliation triggered', { requestId: req.requestId });
@@ -1161,10 +981,7 @@ export const triggerReconciliation = async (req: Request, res: Response): Promis
     logError('Reconciliation error', { error: (error as Error).message });
     res.status(500).json({
       success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Reconciliation failed',
-      },
+      error: { code: 'INTERNAL_ERROR', message: 'Reconciliation failed' },
     });
   }
 };
