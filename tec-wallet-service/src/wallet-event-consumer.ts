@@ -1,7 +1,9 @@
+// tec-wallet-service/src/wallet-event-consumer.ts
+
 import { PrismaClient } from '../prisma/client';
 import {
   createSubscriber,
-  subscribeEvent,
+  subscribeStream,
   EVENTS,
   PaymentCompletedEvent,
 } from './event-bus';
@@ -11,10 +13,18 @@ const prisma = new PrismaClient();
 const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<void> => {
   const { paymentId, userId, amount, currency, piPaymentId, timestamp } = event;
 
-  console.log('[WalletConsumer] Processing payment.completed:', { paymentId, userId, amount });
+  console.log('[WalletConsumer] Processing payment.completed:', {
+    paymentId,
+    userId,
+    amount,
+  });
 
+  // ─── Idempotency Check ─────────────────────────────────
   const existingTransaction = await prisma.transaction.findFirst({
-    where: { description: `payment:${paymentId}`, type: 'CREDIT' },
+    where: {
+      description: `payment:${paymentId}`,
+      type: 'CREDIT',
+    },
   });
 
   if (existingTransaction) {
@@ -22,8 +32,13 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
     return;
   }
 
+  // ─── Find or Create Wallet ─────────────────────────────
   let wallet = await prisma.wallet.findFirst({
-    where: { user_id: userId, currency: currency || 'PI', is_primary: true },
+    where: {
+      user_id: userId,
+      currency: currency || 'PI',
+      is_primary: true,
+    },
   });
 
   if (!wallet) {
@@ -39,6 +54,7 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
     console.log('[WalletConsumer] Created new wallet for user:', userId);
   }
 
+  // ─── Credit + Ledger + Audit (Atomic) ──────────────────
   await prisma.$transaction(async (tx) => {
     await tx.wallet.update({
       where: { id: wallet!.id },
@@ -53,7 +69,12 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
         asset_type: currency || 'PI',
         status: 'completed',
         description: `payment:${paymentId}`,
-        metadata: { paymentId, piPaymentId, userId, processedAt: timestamp },
+        metadata: {
+          paymentId,
+          piPaymentId,
+          userId,
+          processedAt: timestamp,
+        },
       },
     });
 
@@ -65,16 +86,40 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
         user_id: userId,
         before: { balance: wallet!.balance },
         after: { balance: wallet!.balance + amount },
-        metadata: { paymentId, piPaymentId, source: 'payment.completed' },
+        metadata: {
+          paymentId,
+          piPaymentId,
+          source: 'payment.completed',
+        },
       },
     });
   });
 
-  console.log('[WalletConsumer] ✅ Wallet credited:', { userId, amount, walletId: wallet.id });
+  console.log('[WalletConsumer] ✅ Wallet credited:', {
+    userId,
+    amount,
+    walletId: wallet.id,
+    paymentId,
+  });
 };
 
-export const startWalletEventConsumer = (): void => {
+// ✅ async Promise<void> عشان نقدر نعمل .catch في index.ts
+export const startWalletEventConsumer = async (): Promise<void> => {
   const subscriber = createSubscriber();
-  subscribeEvent(subscriber, EVENTS.PAYMENT_COMPLETED, handlePaymentCompleted);
-  console.log('[WalletConsumer] Started — listening for payment.completed');
+
+  console.log('[WalletConsumer] Starting — listening for payment.completed...');
+
+  // ✅ subscribeStream (Redis Streams) مش subscribeEvent (Pub/Sub)
+  await subscribeStream(
+    subscriber,
+    EVENTS.PAYMENT_COMPLETED,
+    'wallet-service',
+    'wallet-consumer-1',
+    handlePaymentCompleted,
+    {
+      batchSize: 10,
+      blockMs: 5000,
+      retryDelay: 1000,
+    },
+  );
 };
