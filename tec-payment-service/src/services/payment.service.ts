@@ -4,15 +4,25 @@ import { publishEvent, createPublisher, EVENTS, PaymentCompletedEvent } from './
 // ─── Redis Publisher (singleton) ─────────────────────────
 let publisher: ReturnType<typeof createPublisher> | null = null;
 
-// ✅ async — ينتظر الـ connection يبقى جاهز
 const getPublisher = async (): Promise<ReturnType<typeof createPublisher>> => {
+  // ✅ استخدم الـ pre-initialized publisher من الـ startup
+  if ((global as any).__redisPublisher) {
+    return (global as any).__redisPublisher;
+  }
+
   if (!publisher) {
     publisher = createPublisher();
-    // ✅ ننتظر الـ connection
-    if (publisher.status === 'wait' || publisher.status === 'close') {
-      await publisher.connect();
-    }
+    // ✅ انتظر الـ connection يبقى جاهز
+    await new Promise<void>((resolve) => {
+      if (publisher!.status === 'ready') {
+        resolve();
+      } else {
+        publisher!.once('ready', resolve);
+        publisher!.once('error', () => resolve()); // مش بنبلوك على الـ error
+      }
+    });
   }
+
   return publisher;
 };
 
@@ -86,7 +96,11 @@ const callPiApi = async (
         continue;
       }
 
-      throw new PiApiError('PI_API_ERROR', `Pi API error (HTTP ${res.status})`, res.status);
+      throw new PiApiError(
+        'PI_API_ERROR',
+        `Pi API error (HTTP ${res.status})`,
+        res.status,
+      );
 
     } catch (err) {
       if (err instanceof PiApiError) throw err;
@@ -135,6 +149,7 @@ export const piCompletePayment = async (
   await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT);
   logInfo('Pi API complete succeeded', { piPaymentId, txId });
 
+  // ✅ Emit event بعد complete ناجح
   if (eventData) {
     try {
       const event: PaymentCompletedEvent = {
@@ -146,7 +161,7 @@ export const piCompletePayment = async (
         timestamp: new Date().toISOString(),
       };
 
-      // ✅ await getPublisher() — ننتظر الـ connection
+      // ✅ await getPublisher() — ينتظر الـ connection
       const pub = await getPublisher();
       const messageId = await publishEvent(pub, EVENTS.PAYMENT_COMPLETED, event);
 
