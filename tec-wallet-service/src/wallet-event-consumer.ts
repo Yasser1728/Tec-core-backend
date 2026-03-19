@@ -1,7 +1,7 @@
 import { PrismaClient } from '../prisma/client';
 import {
   createSubscriber,
-  subscribeStream,
+  subscribeEvent,
   EVENTS,
   PaymentCompletedEvent,
 } from './event-bus';
@@ -11,32 +11,19 @@ const prisma = new PrismaClient();
 const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<void> => {
   const { paymentId, userId, amount, currency, piPaymentId, timestamp } = event;
 
-  console.log('[WalletConsumer] Processing payment.completed:', {
-    paymentId,
-    userId,
-    amount,
-  });
+  console.log('[WalletConsumer] Processing payment.completed:', { paymentId, userId, amount });
 
-  // ─── Idempotency Check ─────────────────────────────────
   const existingTransaction = await prisma.transaction.findFirst({
-    where: {
-      description: `payment:${paymentId}`,
-      type: 'CREDIT',
-    },
+    where: { description: `payment:${paymentId}`, type: 'CREDIT' },
   });
 
   if (existingTransaction) {
     console.log('[WalletConsumer] Duplicate event ignored:', paymentId);
-    return; // ✅ XACK هيتعمل عادي — مش error
+    return;
   }
 
-  // ─── Find or Create Wallet ─────────────────────────────
   let wallet = await prisma.wallet.findFirst({
-    where: {
-      user_id: userId,
-      currency: currency || 'PI',
-      is_primary: true,
-    },
+    where: { user_id: userId, currency: currency || 'PI', is_primary: true },
   });
 
   if (!wallet) {
@@ -52,15 +39,12 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
     console.log('[WalletConsumer] Created new wallet for user:', userId);
   }
 
-  // ─── Credit + Transaction + Audit (Atomic) ─────────────
   await prisma.$transaction(async (tx) => {
-    // 1. تحديث الرصيد
     await tx.wallet.update({
       where: { id: wallet!.id },
       data: { balance: { increment: amount } },
     });
 
-    // 2. Ledger Entry
     await tx.transaction.create({
       data: {
         wallet_id: wallet!.id,
@@ -69,16 +53,10 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
         asset_type: currency || 'PI',
         status: 'completed',
         description: `payment:${paymentId}`,
-        metadata: {
-          paymentId,
-          piPaymentId,
-          userId,
-          processedAt: timestamp,
-        },
+        metadata: { paymentId, piPaymentId, userId, processedAt: timestamp },
       },
     });
 
-    // 3. Audit Log
     await tx.auditLog.create({
       data: {
         action: 'credit',
@@ -87,40 +65,16 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
         user_id: userId,
         before: { balance: wallet!.balance },
         after: { balance: wallet!.balance + amount },
-        metadata: {
-          paymentId,
-          piPaymentId,
-          source: 'payment.completed',
-        },
+        metadata: { paymentId, piPaymentId, source: 'payment.completed' },
       },
     });
   });
 
-  console.log('[WalletConsumer] ✅ Wallet credited:', {
-    userId,
-    amount,
-    walletId: wallet.id,
-    paymentId,
-  });
+  console.log('[WalletConsumer] ✅ Wallet credited:', { userId, amount, walletId: wallet.id });
 };
 
-// ─── Start Consumer ────────────────────────────────────────
-export const startWalletEventConsumer = async (): Promise<void> => {
+export const startWalletEventConsumer = (): void => {
   const subscriber = createSubscriber();
-
-  console.log('[WalletConsumer] Starting — listening for payment.completed...');
-
-  // ✅ Redis Streams بدل Pub/Sub
-  await subscribeStream(
-    subscriber,
-    EVENTS.PAYMENT_COMPLETED,  // stream name
-    'wallet-service',           // consumer group
-    'wallet-consumer-1',        // consumer name
-    handlePaymentCompleted,
-    {
-      batchSize: 10,
-      blockMs: 5000,
-      retryDelay: 1000,
-    }
-  );
+  subscribeEvent(subscriber, EVENTS.PAYMENT_COMPLETED, handlePaymentCompleted);
+  console.log('[WalletConsumer] Started — listening for payment.completed');
 };
