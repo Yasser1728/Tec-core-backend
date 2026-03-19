@@ -1,7 +1,5 @@
-// tec-wallet-service/src/index.ts
-
 import dotenv from 'dotenv';
-dotenv.config(); // ✅ أول سطر قبل أي import
+dotenv.config();
 
 import express, { Application } from 'express';
 import cors from 'cors';
@@ -120,10 +118,10 @@ app.use((
 app.listen(PORT, () => {
   logger.info(`💰 Wallet Service running on port ${PORT}`);
 
-  // ✅ debug log
-  logger.info(`REDIS_URL configured: ${!!process.env.REDIS_URL}`);
+  // ✅ استخدم env.REDIS_URL بدل process.env.REDIS_URL
+  logger.info(`REDIS_URL configured: ${!!env.REDIS_URL}`);
 
-  if (process.env.REDIS_URL) {
+  if (env.REDIS_URL) {
     startWalletEventConsumer().catch((err) => {
       logger.error('❌ Wallet Event Consumer failed to start', {
         error: (err as Error).message,
