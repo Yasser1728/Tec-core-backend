@@ -7,22 +7,34 @@ async function main() {
     const { default: app } = await import('./app');
     const { env } = await import('./config/env');
 
+    // ✅ Initialize Redis publisher عند الـ startup
+    if (process.env.REDIS_URL) {
+      try {
+        const { createPublisher } = await import('./services/event-bus');
+        const publisher = createPublisher();
+        publisher.on('connect', () => logInfo('✅ Redis publisher connected'));
+        publisher.on('error', (err: Error) =>
+          logInfo(`⚠️ Redis publisher error: ${err.message}`)
+        );
+        (global as any).__redisPublisher = publisher;
+        logInfo('Redis publisher initialised');
+      } catch (err) {
+        logInfo(`⚠️ Redis publisher init failed: ${(err as Error).message}`);
+      }
+    }
+
     const PORT = env.PORT;
 
     app.listen(PORT, () => {
       logInfo(`💳 Payment Service running on port ${PORT}`);
       if (!env.PI_API_KEY || !env.PI_APP_ID) {
-        logInfo('⚠️  PI_API_KEY or PI_APP_ID not configured — Pi payment endpoints will return errors until set.');
+        logInfo('⚠️ PI_API_KEY or PI_APP_ID not configured — Pi payment endpoints will return errors until set.');
       }
     });
 
-    // ─── Payment Reconciliation Cron ─────────────────────────────────────────
-    // Runs every hour to detect and resolve stale payments (created/approved
-    // but never completed). Uses dynamic import to avoid loading the cron
-    // library unless it is actually available.
     try {
       const cron = await import('node-cron');
-      const RECONCILE_SCHEDULE = process.env.RECONCILE_CRON ?? '0 * * * *'; // every hour
+      const RECONCILE_SCHEDULE = process.env.RECONCILE_CRON ?? '0 * * * *';
 
       cron.schedule(RECONCILE_SCHEDULE, async () => {
         try {
@@ -43,7 +55,9 @@ async function main() {
     }
 
   } catch (err) {
-    logError('❌ Payment Service failed to start:', { error: (err as Error).message });
+    logError('❌ Payment Service failed to start:', {
+      error: (err as Error).message,
+    });
     process.exit(1);
   }
 }
