@@ -1,26 +1,17 @@
-/**
- * ── Pi Network Payment Service ──
- *
- * ✅ Production-ready for single-instance deployment
- *
- * Design Notes:
- * 1. Retry with exponential backoff handles transient API/network issues.
- * 2. Circuit breaker stops requests after 5 consecutive failures for 60s,
- *    preventing API flooding.
- * 3. Current implementation uses module-level variables for circuit state:
- *      let circuitFailures = 0;
- *      let circuitOpenUntil = 0;
- *    This is fine for single-instance deployments (typical Railway setup).
- * 4. ⚠️ If horizontal scaling (multiple instances) is used, each instance
- *    maintains its own circuit state. Shared state (e.g., Redis) would be
- *    required to enforce a global circuit breaker.
- *
- * Recommendation:
- * - Keep it simple for now: single-instance is stable and maintainable.
- * - Introduce Redis/shared state only if scaling requires it.
- */
+// tec-payment-service/src/services/payment.service.ts
 
 import { logInfo, logWarn } from '../utils/logger';
+import { publishEvent, createPublisher, EVENTS, PaymentCompletedEvent } from './event-bus';
+
+// ─── Redis Publisher (singleton) ─────────────────────────
+let publisher: ReturnType<typeof createPublisher> | null = null;
+
+const getPublisher = () => {
+  if (!publisher) {
+    publisher = createPublisher();
+  }
+  return publisher;
+};
 
 const getPiBaseUrl = (): string => {
   if (process.env.PI_PLATFORM_BASE_URL) return process.env.PI_PLATFORM_BASE_URL;
@@ -32,31 +23,30 @@ const getPiBaseUrl = (): string => {
 const APPROVE_TIMEOUT = parseInt(process.env.PI_API_APPROVE_TIMEOUT ?? '30000', 10);
 const COMPLETE_TIMEOUT = parseInt(process.env.PI_API_COMPLETE_TIMEOUT ?? '30000', 10);
 const MAX_RETRIES = parseInt(process.env.PI_API_RETRIES ?? '3', 10);
-const CIRCUIT_THRESHOLD = 5;      // عدد محاولات الفشل قبل فتح الدائرة
-const CIRCUIT_TIMEOUT = 60000;    // مدة فتح الدائرة 60 ثانية
+const CIRCUIT_THRESHOLD = 5;
+const CIRCUIT_TIMEOUT = 60000;
 
-/* =========================================================
-   Circuit breaker state (module-level)
-========================================================= */
 let circuitFailures = 0;
 let circuitOpenUntil = 0;
 
-/* =========================================================
-   Helpers
-========================================================= */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class PiApiError extends Error {
-  constructor(public readonly code: string, message: string, public readonly httpStatus = 502) {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly httpStatus = 502,
+  ) {
     super(message);
     this.name = 'PiApiError';
   }
 }
 
-/* =========================================================
-   Internal fetch with retry + exponential backoff + circuit breaker
-========================================================= */
-const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 30000) => {
+const callPiApi = async (
+  url: string,
+  body?: Record<string, unknown>,
+  timeout = 30000,
+) => {
   const apiKey = process.env.PI_API_KEY;
   if (!apiKey) throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY not configured', 500);
 
@@ -72,13 +62,16 @@ const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { Authorization: `Key ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Key ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
 
       if (res.ok) {
-        circuitFailures = 0; // reset failures on success
+        circuitFailures = 0;
         return res;
       }
 
@@ -86,11 +79,15 @@ const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 
       logWarn('Pi API HTTP error', { url, status: res.status, attempt, body: text });
 
       if (res.status === 429 || res.status >= 500) {
-        await sleep(500 * 2 ** (attempt - 1)); // exponential backoff
+        await sleep(500 * 2 ** (attempt - 1));
         continue;
       }
 
-      throw new PiApiError('PI_API_ERROR', `Pi API error (HTTP ${res.status})`, res.status);
+      throw new PiApiError(
+        'PI_API_ERROR',
+        `Pi API error (HTTP ${res.status})`,
+        res.status,
+      );
 
     } catch (err) {
       if (err instanceof PiApiError) throw err;
@@ -101,25 +98,24 @@ const callPiApi = async (url: string, body?: Record<string, unknown>, timeout = 
         logWarn('Pi API network error', { url, attempt, error: (err as Error).message });
       }
 
-      await sleep(500 * 2 ** (attempt - 1)); // exponential backoff
+      await sleep(500 * 2 ** (attempt - 1));
     } finally {
       clearTimeout(timer);
     }
   }
 
-  // circuit breaker logic
   circuitFailures++;
   if (circuitFailures >= CIRCUIT_THRESHOLD) {
     circuitOpenUntil = Date.now() + CIRCUIT_TIMEOUT;
-    logWarn('Pi API circuit breaker triggered', { threshold: CIRCUIT_THRESHOLD, openUntil: circuitOpenUntil });
+    logWarn('Pi API circuit breaker triggered', {
+      threshold: CIRCUIT_THRESHOLD,
+      openUntil: circuitOpenUntil,
+    });
   }
 
   throw new PiApiError('PI_RETRY_EXCEEDED', 'Pi API request failed after retries', 502);
 };
 
-/* =========================================================
-   Approve Payment
-========================================================= */
 export const piApprovePayment = async (piPaymentId: string): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/approve`;
   logInfo('Calling Pi API: approve', { piPaymentId });
@@ -127,21 +123,59 @@ export const piApprovePayment = async (piPaymentId: string): Promise<void> => {
   logInfo('Pi API approve succeeded', { piPaymentId });
 };
 
-/* =========================================================
-   Complete Payment
-========================================================= */
-export const piCompletePayment = async (piPaymentId: string, txId?: string): Promise<void> => {
+export const piCompletePayment = async (
+  piPaymentId: string,
+  txId?: string,
+  eventData?: {
+    paymentId: string;
+    userId: string;
+    amount: number;
+    currency: string;
+  },
+): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/complete`;
   logInfo('Calling Pi API: complete', { piPaymentId, txId });
   await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT);
   logInfo('Pi API complete succeeded', { piPaymentId, txId });
+
+  // ✅ Emit event بعد complete ناجح — Redis Streams
+  if (eventData) {
+    try {
+      const event: PaymentCompletedEvent = {
+        paymentId: eventData.paymentId,
+        userId: eventData.userId,
+        amount: eventData.amount,
+        currency: eventData.currency,
+        piPaymentId,
+        timestamp: new Date().toISOString(),
+      };
+
+      // ✅ publishEvent بتستخدم XADD (Streams) مش publish (Pub/Sub)
+      const messageId = await publishEvent(
+        getPublisher(),
+        EVENTS.PAYMENT_COMPLETED,
+        event,
+      );
+
+      logInfo('payment.completed event emitted to stream', {
+        ...event,
+        messageId,
+        stream: EVENTS.PAYMENT_COMPLETED,
+      });
+
+    } catch (err) {
+      // ⚠️ لا توقف العملية لو Redis فشل
+      // الـ payment اتكمل على Pi — المهم مش نفشل الـ response
+      // TODO: Outbox Pattern لضمان الـ delivery
+      logWarn('Failed to emit payment.completed event', {
+        error: (err as Error).message,
+        paymentId: eventData.paymentId,
+        userId: eventData.userId,
+      });
+    }
+  }
 };
 
-/* =========================================================
-   Test Utilities (exported for testing only)
-========================================================= */
-
-/** @internal — use only in tests to reset circuit breaker state */
 export const _resetCircuitBreaker = (): void => {
   circuitFailures = 0;
   circuitOpenUntil = 0;
