@@ -1,6 +1,4 @@
-// Prisma schema for TEC Payment Service
-// Run `npx prisma generate` to generate the Prisma Client
-// Run `npx prisma migrate dev` to apply migrations
+// tec-payment-service/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -62,4 +60,23 @@ model PaymentAuditLog {
   @@index([paymentId])
   @@index([timestamp])
   @@map("payment_audit_logs")
+}
+
+// ✅ Outbox Pattern — ضمان delivery للـ events
+model OutboxEvent {
+  id           String    @id @default(uuid())
+  stream_name  String                        // اسم الـ Redis stream
+  payload      Json                          // الـ event data
+  status       String    @default("pending") // pending | published | failed
+  attempts     Int       @default(0)         // عدد المحاولات
+  max_attempts Int       @default(5)         // أقصى عدد محاولات
+  error        String?                       // آخر error
+  created_at   DateTime  @default(now())
+  published_at DateTime?                     // وقت النشر الناجح
+  next_retry   DateTime  @default(now())     // وقت المحاولة الجاية
+
+  @@index([status])
+  @@index([next_retry])
+  @@index([created_at])
+  @@map("outbox_events")
 }
