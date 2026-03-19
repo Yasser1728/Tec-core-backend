@@ -16,15 +16,23 @@ export class IdentityController {
     private readonly jwtService: JwtService,
   ) {}
 
-  // ✅ استخرج الـ userId من الـ JWT
-  private getUserId(authorization: string): string {
+  // ✅ استخرج userId + piUserId + username من الـ JWT
+  private getUserIdAndInfo(authorization: string): {
+    userId: string;
+    piUserId: string;
+    username: string;
+  } {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing token');
     }
     const token = authorization.replace('Bearer ', '');
     try {
       const decoded = this.jwtService.verify(token) as any;
-      return decoded.sub ?? decoded.id ?? decoded.userId;
+      return {
+        userId: decoded.sub ?? decoded.id ?? decoded.userId,
+        piUserId: decoded.piId ?? decoded.pi_user_id ?? decoded.sub,
+        username: decoded.username ?? decoded.piUsername ?? 'unknown',
+      };
     } catch {
       throw new UnauthorizedException('Invalid token');
     }
@@ -33,16 +41,22 @@ export class IdentityController {
   // GET /identity/me
   @Get('me')
   async getMe(@Headers('authorization') auth: string) {
-    const userId = this.getUserId(auth);
-    const user = await this.identityService.getProfile(userId);
+    const { piUserId, username } = this.getUserIdAndInfo(auth);
+    const user = await this.identityService.findOrCreateUser({
+      piUserId,
+      username,
+    });
     return { success: true, data: { user } };
   }
 
   // GET /identity/profile
   @Get('profile')
   async getProfile(@Headers('authorization') auth: string) {
-    const userId = this.getUserId(auth);
-    const user = await this.identityService.getProfile(userId);
+    const { piUserId, username } = this.getUserIdAndInfo(auth);
+    const user = await this.identityService.findOrCreateUser({
+      piUserId,
+      username,
+    });
     return { success: true, data: { profile: user.profile } };
   }
 
@@ -58,25 +72,36 @@ export class IdentityController {
       avatarUrl?: string;
     },
   ) {
-    const userId = this.getUserId(auth);
-    const profile = await this.identityService.updateProfile(userId, body);
+    const { piUserId, username } = this.getUserIdAndInfo(auth);
+    const user = await this.identityService.findOrCreateUser({
+      piUserId,
+      username,
+    });
+    const profile = await this.identityService.updateProfile(user.id, body);
     return { success: true, data: { profile } };
   }
 
   // GET /identity/kyc
   @Get('kyc')
   async getKyc(@Headers('authorization') auth: string) {
-    const userId = this.getUserId(auth);
-    const kyc = await this.identityService.getKycStatus(userId);
+    const { piUserId, username } = this.getUserIdAndInfo(auth);
+    const user = await this.identityService.findOrCreateUser({
+      piUserId,
+      username,
+    });
+    const kyc = await this.identityService.getKycStatus(user.id);
     return { success: true, data: { kyc } };
   }
 
   // GET /identity/roles
   @Get('roles')
   async getRoles(@Headers('authorization') auth: string) {
-    const userId = this.getUserId(auth);
-    const user = await this.identityService.getProfile(userId);
+    const { piUserId, username } = this.getUserIdAndInfo(auth);
+    const user = await this.identityService.findOrCreateUser({
+      piUserId,
+      username,
+    });
     const roles = user.roles.map((ur) => ur.role.name);
     return { success: true, data: { roles } };
   }
-}
+      }
