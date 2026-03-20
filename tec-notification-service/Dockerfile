@@ -24,7 +24,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma/ ./prisma/
 
-RUN npm install --only=production --ignore-scripts && npm cache clean --force
+# ✅ install كل الـ dependencies مش production بس
+RUN npm install --ignore-scripts && npm cache clean --force
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
