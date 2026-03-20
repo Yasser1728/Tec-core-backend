@@ -1,4 +1,3 @@
-// src/modules/auth/auth.service.ts
 import {
   Injectable, UnauthorizedException,
   ConflictException, BadRequestException, Logger,
@@ -11,18 +10,36 @@ import { LoginDto } from './dto/login.dto';
 import { AuthResponse, TokenPayload, PiUserDTO } from './auth.types';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
+import Redis from 'ioredis';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly SALT_ROUNDS = 12;
   private readonly PI_API_URL = 'https://api.minepi.com';
+  private readonly redis: Redis | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    // ✅ Redis publisher
+    if (process.env.REDIS_URL) {
+      this.redis = new Redis(process.env.REDIS_URL, {
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times) => Math.min(times * 100, 3000),
+        enableOfflineQueue: true,
+        lazyConnect: false,
+      });
+      this.redis.on('connect', () =>
+        this.logger.log('✅ Redis connected (auth-service)')
+      );
+      this.redis.on('error', (err) =>
+        this.logger.warn(`⚠️ Redis error: ${err.message}`)
+      );
+    }
+  }
 
   async piLogin(piAccessToken: string): Promise<AuthResponse> {
     if (!piAccessToken)
@@ -46,6 +63,26 @@ export class AuthService {
     });
 
     this.logger.log(`Pi login: ${piUser.username} (new: ${isNewUser})`);
+
+    // ✅ emit user.created لو new user
+    if (isNewUser && this.redis) {
+      try {
+        await this.redis.xadd(
+          'user.created',
+          '*',
+          'data', JSON.stringify({
+            userId: user.id,
+            piUserId: user.pi_uid,
+            username: user.pi_username,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        this.logger.log(`user.created event emitted: ${piUser.username}`);
+      } catch (err) {
+        this.logger.warn(`Failed to emit user.created: ${(err as Error).message}`);
+      }
+    }
+
     return this.buildAuthResponse(user, isNewUser);
   }
 
@@ -136,12 +173,10 @@ export class AuthService {
     return user;
   }
 
-  // ✅ الدالة المصلحة
   private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
     const jwtSecret = this.configService.get<string>('JWT_SECRET', 'default-secret');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret);
 
-    // ✅ تحويل آمن: يقبل '7d' أو '86400' أو رقم
     const parseExpiry = (value: string | undefined, fallback: number): string | number => {
       if (!value) return fallback;
       const asNumber = Number(value);
@@ -150,12 +185,12 @@ export class AuthService {
 
     const expiresIn = parseExpiry(
       this.configService.get<string>('JWT_EXPIRES_IN'),
-      86400,  // fallback: 24 ساعة بالثواني
+      86400,
     );
 
     const refreshExpiresIn = parseExpiry(
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN'),
-      604800, // fallback: 7 أيام بالثواني
+      604800,
     );
 
     const payload: TokenPayload = {
@@ -194,4 +229,4 @@ export class AuthService {
       },
     };
   }
-  }
+}
