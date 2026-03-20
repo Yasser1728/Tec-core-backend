@@ -13,7 +13,6 @@ export interface CreateNotificationDto {
 export class NotificationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ✅ أنشئ notification
   async create(dto: CreateNotificationDto) {
     const notification = await this.prisma.notification.create({
       data: {
@@ -21,14 +20,13 @@ export class NotificationService {
         type: dto.type,
         title: dto.title,
         message: dto.message,
-        metadata: dto.metadata ?? {},
+        metadata: (dto.metadata ?? {}) as any, // ✅ fix
       },
     });
     console.log(`[NotificationService] Created: ${dto.type} for user ${dto.userId}`);
     return notification;
   }
 
-  // ✅ جيب notifications للـ user
   async getByUserId(userId: string, limit = 20) {
     return this.prisma.notification.findMany({
       where: { user_id: userId },
@@ -37,14 +35,12 @@ export class NotificationService {
     });
   }
 
-  // ✅ عدد الـ unread
   async getUnreadCount(userId: string) {
     return this.prisma.notification.count({
       where: { user_id: userId, read: false },
     });
   }
 
-  // ✅ mark as read
   async markAsRead(id: string, userId: string) {
     return this.prisma.notification.updateMany({
       where: { id, user_id: userId },
@@ -52,7 +48,6 @@ export class NotificationService {
     });
   }
 
-  // ✅ mark all as read
   async markAllAsRead(userId: string) {
     return this.prisma.notification.updateMany({
       where: { user_id: userId, read: false },
