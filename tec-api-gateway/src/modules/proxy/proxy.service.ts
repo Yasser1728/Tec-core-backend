@@ -25,10 +25,14 @@ export class ProxyService {
       pathRewrite: { '^/api/wallet': '/wallets' },
       aliases: ['wallets'],
     },
-    // ✅ Identity Service
     identity: {
       target: process.env.IDENTITY_SERVICE_URL || 'https://identity-service-production-fe57.up.railway.app',
       pathRewrite: { '^/api/identity': '/identity' },
+    },
+    // ✅ Notification Service
+    notification: {
+      target: process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service-production-dc81.up.railway.app',
+      pathRewrite: { '^/api/notification': '/notifications' },
     },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
@@ -41,10 +45,6 @@ export class ProxyService {
     analytics: {
       target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service.up.railway.app',
       pathRewrite: { '^/api/analytics': '' },
-    },
-    notification: {
-      target: process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service.up.railway.app',
-      pathRewrite: { '^/api/notification': '' },
     },
     domains: {
       target: process.env.DOMAIN_SERVICE_URL || 'https://domain-service.up.railway.app',
@@ -141,4 +141,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-                   }
+}
