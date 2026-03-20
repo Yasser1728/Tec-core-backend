@@ -29,10 +29,14 @@ export class ProxyService {
       target: process.env.IDENTITY_SERVICE_URL || 'https://identity-service-production-fe57.up.railway.app',
       pathRewrite: { '^/api/identity': '/identity' },
     },
-    // ✅ Notification Service
     notification: {
       target: process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service-production-dc81.up.railway.app',
       pathRewrite: { '^/api/notification': '/notifications' },
+    },
+    // ✅ Storage Service
+    storage: {
+      target: process.env.STORAGE_SERVICE_URL || 'https://storage-sevice-production.up.railway.app',
+      pathRewrite: { '^/api/storage': '/storage' },
     },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
