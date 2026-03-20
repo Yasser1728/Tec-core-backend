@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum KycLevel {
+  L0
+  L1
+  L2
+}
+
+model Kyc {
+  id               String    @id @default(uuid())
+  user_id          String    @unique
+  pi_user_id       String?
+  username         String?
+  status           KycStatus @default(NOT_STARTED)
+  level            KycLevel  @default(L0)
+  id_front_url     String?
+  id_back_url      String?
+  selfie_url       String?
+  rejection_reason String?
+  verified_at      DateTime?
+  rejected_at      DateTime?
+  submitted_at     DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  audit_logs KycAuditLog[]
+
+  @@index([user_id])
+  @@index([status])
+  @@map("kyc_records")
+}
+
+model KycAuditLog {
+  id         String    @id @default(uuid())
+  kyc_id     String
+  kyc        Kyc       @relation(fields: [kyc_id], references: [id])
+  action     String
+  from_status KycStatus?
+  to_status   KycStatus?
+  metadata   Json?
+  created_at DateTime  @default(now())
+
+  @@index([kyc_id])
+  @@map("kyc_audit_logs")
+}
