@@ -5,6 +5,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { IdentityService } from './modules/identity/identity.service';
 import * as Sentry from '@sentry/node';
 
 async function bootstrap() {
@@ -39,11 +40,26 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // ✅ 5005
   const PORT = process.env.PORT ?? 5005;
   await app.listen(PORT, '0.0.0.0');
 
   console.log(`🪪 Identity Service running on port ${PORT}`);
-}
 
-bootstrap();
+  // ✅ Start user.created Consumer
+  if (process.env.REDIS_URL) {
+    try {
+      const { startUserCreatedConsumer } = await import(
+        './modules/identity/user-created.consumer'
+      );
+      const identityService = app.get(IdentityService);
+      startUserCreatedConsumer(identityService).catch((err: Error) => {
+        console.error('[UserCreatedConsumer] Fatal:', err.message);
+      });
+      console.log('✅ UserCreated Consumer started');
+    } catch (err) {
+      console.error('[UserCreatedConsumer] Failed to start:', (err as Error).message);
+    }
+  } else {
+    console.warn('⚠️ REDIS_URL not set — UserCreated Consumer disabled');
+  }
+}
