@@ -33,10 +33,14 @@ export class ProxyService {
       target: process.env.NOTIFICATION_SERVICE_URL || 'https://notification-service-production-dc81.up.railway.app',
       pathRewrite: { '^/api/notification': '/notifications' },
     },
-    // ✅ Storage Service
     storage: {
       target: process.env.STORAGE_SERVICE_URL || 'https://storage-sevice-production.up.railway.app',
       pathRewrite: { '^/api/storage': '/storage' },
+    },
+    // ✅ KYC Service
+    kyc: {
+      target: process.env.KYC_SERVICE_URL || 'https://kyc-service-production-ba73.up.railway.app',
+      pathRewrite: { '^/api/kyc': '/kyc' },
     },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
