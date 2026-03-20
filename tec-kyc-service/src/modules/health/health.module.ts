@@ -1,25 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
 
-@Controller()
-export class HealthController {
-  private readonly startTime = Date.now();
-
-  @Get('health')
-  health() {
-    return {
-      status: 'ok',
-      service: 'kyc-service',
-      timestamp: new Date().toISOString(),
-      uptime: Math.floor((Date.now() - this.startTime) / 1000),
-    };
-  }
-
-  @Get('ready')
-  ready() {
-    return {
-      status: 'ready',
-      service: 'kyc-service',
-      timestamp: new Date().toISOString(),
-    };
-  }
-}
+@Module({
+  controllers: [HealthController],
+})
+export class HealthModule {}
