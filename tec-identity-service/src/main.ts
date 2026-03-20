@@ -6,10 +6,10 @@ import {
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import { IdentityService } from './modules/identity/identity.service';
+import { startUserCreatedConsumer } from './modules/identity/user-created.consumer';
 import * as Sentry from '@sentry/node';
 
 async function bootstrap() {
-  // ✅ Sentry
   if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
@@ -29,7 +29,6 @@ async function bootstrap() {
     console.log('[Sentry] Initialised for identity-service');
   }
 
-  // ✅ NestJS + Fastify
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: false }),
@@ -45,21 +44,16 @@ async function bootstrap() {
 
   console.log(`🪪 Identity Service running on port ${PORT}`);
 
-  // ✅ Start user.created Consumer
+  // ✅ Static import بدل dynamic
   if (process.env.REDIS_URL) {
-    try {
-      const { startUserCreatedConsumer } = await import(
-        './modules/identity/user-created.consumer'
-      );
-      const identityService = app.get(IdentityService);
-      startUserCreatedConsumer(identityService).catch((err: Error) => {
-        console.error('[UserCreatedConsumer] Fatal:', err.message);
-      });
-      console.log('✅ UserCreated Consumer started');
-    } catch (err) {
-      console.error('[UserCreatedConsumer] Failed to start:', (err as Error).message);
-    }
+    const identityService = app.get(IdentityService);
+    startUserCreatedConsumer(identityService).catch((err: Error) => {
+      console.error('[UserCreatedConsumer] Fatal:', err.message);
+    });
+    console.log('✅ UserCreated Consumer started');
   } else {
     console.warn('⚠️ REDIS_URL not set — UserCreated Consumer disabled');
   }
 }
+
+bootstrap();
