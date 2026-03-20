@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum NotificationType {
+  PAYMENT
+  WALLET
+  KYC
+  SECURITY
+  SYSTEM
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  user_id    String
+  type       NotificationType
+  title      String
+  message    String
+  read       Boolean          @default(false)
+  metadata   Json?
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
+
+  @@index([user_id])
+  @@index([read])
+  @@index([created_at])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String  @id @default(uuid())
+  user_id      String  @unique
+  in_app       Boolean @default(true)
+  email        Boolean @default(false)
+  push         Boolean @default(false)
+
+  @@map("notification_preferences")
+}
