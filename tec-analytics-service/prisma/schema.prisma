@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(uuid())
+  type       String
+  payload    Json
+  user_id    String?
+  created_at DateTime @default(now())
+
+  @@index([type])
+  @@index([user_id])
+  @@index([created_at])
+  @@map("analytics_events")
+}
+
+model DailyMetric {
+  id               String   @id @default(uuid())
+  date             DateTime @unique
+  total_payments   Int      @default(0)
+  total_volume     Float    @default(0)
+  new_users        Int      @default(0)
+  active_users     Int      @default(0)
+  kyc_submitted    Int      @default(0)
+  kyc_verified     Int      @default(0)
+  orders_created   Int      @default(0)
+  orders_volume    Float    @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([date])
+  @@map("daily_metrics")
+}
