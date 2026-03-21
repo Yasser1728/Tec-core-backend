@@ -41,10 +41,14 @@ export class ProxyService {
       target: process.env.KYC_SERVICE_URL || 'https://kyc-service-production-ba73.up.railway.app',
       pathRewrite: { '^/api/kyc': '/kyc' },
     },
-    // ✅ Commerce Service
     commerce: {
       target: process.env.COMMERCE_SERVICE_URL || 'https://commerce-service-production.up.railway.app',
       pathRewrite: { '^/api/commerce': '/commerce' },
+    },
+    // ✅ Realtime Service
+    realtime: {
+      target: process.env.REALTIME_SERVICE_URL || 'https://realtime-service-production-9630.up.railway.app',
+      pathRewrite: { '^/api/realtime': '' },
     },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
@@ -149,4 +153,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-        }
+}
