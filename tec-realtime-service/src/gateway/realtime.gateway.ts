@@ -20,10 +20,10 @@ export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
-  server: Server;
+  server!: Server; // ✅ fix
 
   private readonly logger = new Logger('RealtimeGateway');
-  private readonly connectedUsers = new Map<string, string>(); // socketId → userId
+  private readonly connectedUsers = new Map<string, string>();
 
   constructor(private readonly jwtService: JwtService) {}
 
@@ -46,13 +46,11 @@ export class RealtimeGateway
       const decoded = this.jwtService.verify(token) as any;
       const userId = decoded.sub ?? decoded.id;
 
-      // ✅ Join user-specific room
       client.join(userId);
       this.connectedUsers.set(client.id, userId);
 
       this.logger.log(`[WS] Connected: ${userId} (socket: ${client.id})`);
 
-      // ✅ إبعت confirmation للـ client
       client.emit('connected', {
         status: 'connected',
         userId,
@@ -70,13 +68,11 @@ export class RealtimeGateway
     this.logger.log(`[WS] Disconnected: ${userId} (socket: ${client.id})`);
   }
 
-  // ✅ Emit to specific user
   emitToUser(userId: string, event: string, data: unknown) {
     this.server.to(userId).emit(event, data);
     this.logger.log(`[WS] Emitted ${event} to user ${userId}`);
   }
 
-  // ✅ Emit to all
   emitToAll(event: string, data: unknown) {
     this.server.emit(event, data);
   }
