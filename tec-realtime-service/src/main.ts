@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { RealtimeGateway } from './gateway/realtime.gateway';
 import { startRealtimeConsumers } from './redis/redis.consumer';
@@ -16,7 +17,8 @@ async function bootstrap() {
     console.log('[Sentry] Initialised for realtime-service');
   }
 
-  const app = await NestFactory.create(AppModule);
+  // ✅ Express explicitly
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.enableCors({
     origin: '*',
@@ -28,7 +30,6 @@ async function bootstrap() {
 
   console.log(`⚡ Realtime Service running on port ${PORT}`);
 
-  // ✅ Start Redis consumers
   if (process.env.REDIS_URL) {
     const gateway = app.get(RealtimeGateway);
     await startRealtimeConsumers(gateway);
