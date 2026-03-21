@@ -49,7 +49,6 @@ export class ProxyService {
       target: process.env.REALTIME_SERVICE_URL || 'https://realtime-service-production-9630.up.railway.app',
       pathRewrite: { '^/api/realtime': '' },
     },
-    // ✅ Analytics Service
     analytics: {
       target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service-production-c310.up.railway.app',
       pathRewrite: { '^/api/analytics': '/analytics' },
@@ -153,3 +152,4 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
+}
