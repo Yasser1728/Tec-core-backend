@@ -45,10 +45,14 @@ export class ProxyService {
       target: process.env.COMMERCE_SERVICE_URL || 'https://commerce-service-production.up.railway.app',
       pathRewrite: { '^/api/commerce': '/commerce' },
     },
-    // ✅ Realtime Service
     realtime: {
       target: process.env.REALTIME_SERVICE_URL || 'https://realtime-service-production-9630.up.railway.app',
       pathRewrite: { '^/api/realtime': '' },
+    },
+    // ✅ Analytics Service
+    analytics: {
+      target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service-production-c310.up.railway.app',
+      pathRewrite: { '^/api/analytics': '/analytics' },
     },
     fundx: {
       target: process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
@@ -57,10 +61,6 @@ export class ProxyService {
     nexus: {
       target: process.env.NEXUS_SERVICE_URL || 'https://nexus-service.up.railway.app',
       pathRewrite: { '^/api/nexus': '' },
-    },
-    analytics: {
-      target: process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service.up.railway.app',
-      pathRewrite: { '^/api/analytics': '' },
     },
     domains: {
       target: process.env.DOMAIN_SERVICE_URL || 'https://domain-service.up.railway.app',
@@ -153,4 +153,3 @@ export class ProxyService {
       return count + 1 + ((options as any).aliases?.length || 0);
     }, 0);
   }
-}
