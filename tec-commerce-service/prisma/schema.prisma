@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "./client"
 }
 
 datasource db {
@@ -16,6 +17,7 @@ enum ProductStatus {
 enum OrderStatus {
   PENDING
   PAID
+  PROCESSING
   SHIPPED
   DELIVERED
   CANCELLED
@@ -46,20 +48,30 @@ model Product {
 }
 
 model Order {
-  id         String      @id @default(uuid())
-  buyer_id   String
-  status     OrderStatus @default(PENDING)
-  total      Float
-  currency   String      @default("PI")
-  payment_id String?
-  notes      String?
-  created_at DateTime    @default(now())
-  updated_at DateTime    @updatedAt
+  id              String      @id @default(uuid())
+  buyer_id        String
+  status          OrderStatus @default(PENDING)
+  total           Float
+  currency        String      @default("PI")
+  payment_id      String?     @unique  // ← ربط مع Payment Service
+  pi_payment_id   String?     @unique  // ← Pi Network payment ID
+  shipping_addr   String?
+  notes           String?
+  paid_at         DateTime?
+  shipped_at      DateTime?
+  delivered_at    DateTime?
+  cancelled_at    DateTime?
+  cancel_reason   String?
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
 
-  items OrderItem[]
+  items    OrderItem[]
+  timeline OrderTimeline[]
 
   @@index([buyer_id])
   @@index([status])
+  @@index([payment_id])
+  @@index([created_at])
   @@map("orders")
 }
 
@@ -68,9 +80,29 @@ model OrderItem {
   order_id   String
   product_id String
   quantity   Int     @default(1)
-  price      Float
-  order      Order   @relation(fields: [order_id], references: [id])
-  product    Product @relation(fields: [product_id], references: [id])
+  price      Float   // السعر وقت الشراء — مش بيتغير لو المنتج اتغير
+  currency   String  @default("PI")
+  snapshot   Json?   // نسخة من بيانات المنتج وقت الشراء
 
+  order   Order   @relation(fields: [order_id],   references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@index([order_id])
+  @@index([product_id])
   @@map("order_items")
+}
+
+// Audit trail لكل تغيير في حالة الـ Order
+model OrderTimeline {
+  id         String   @id @default(uuid())
+  order_id   String
+  status     String
+  note       String?
+  created_by String?
+  created_at DateTime @default(now())
+
+  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@map("order_timeline")
 }
