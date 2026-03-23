@@ -2,13 +2,12 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query,
   Headers, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
-import { OrdersService, CreateOrderDto, CheckoutDto } from './orders.service';
+import { OrdersService, CreateOrderDto, CheckoutDto } from './order.service'; // ← order.service مش orders.service
 
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // ── POST /orders — إنشاء order جديد ───────────────────────
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createOrder(
@@ -17,16 +16,10 @@ export class OrdersController {
   ) {
     const buyer_id = body.buyer_id || userId;
     if (!buyer_id) throw new BadRequestException('buyer_id is required');
-
-    const order = await this.ordersService.createOrder({
-      ...body,
-      buyer_id,
-    });
-
+    const order = await this.ordersService.createOrder({ ...body, buyer_id });
     return { success: true, data: { order } };
   }
 
-  // ── POST /orders/checkout — ربط بالـ payment ──────────────
   @Post('checkout')
   @HttpCode(HttpStatus.OK)
   async checkout(@Body() dto: CheckoutDto) {
@@ -37,7 +30,6 @@ export class OrdersController {
     return { success: true, data: { order } };
   }
 
-  // ── GET /orders — قائمة orders للمستخدم ───────────────────
   @Get()
   async listOrders(
     @Query('buyer_id') buyer_id: string,
@@ -48,17 +40,14 @@ export class OrdersController {
   ) {
     const id = buyer_id || userId;
     if (!id) throw new BadRequestException('buyer_id is required');
-
     const result = await this.ordersService.listOrders(id, {
-      page:   parseInt(page)  || 1,
-      limit:  parseInt(limit) || 10,
+      page:  parseInt(page)  || 1,
+      limit: parseInt(limit) || 10,
       status,
     });
-
     return { success: true, data: result };
   }
 
-  // ── GET /orders/:id — تفاصيل order ─────────────────────────
   @Get(':id')
   async getOrder(
     @Param('id')          id: string,
@@ -68,7 +57,6 @@ export class OrdersController {
     return { success: true, data: { order } };
   }
 
-  // ── PATCH /orders/:id/cancel — إلغاء order ─────────────────
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancelOrder(
@@ -79,8 +67,7 @@ export class OrdersController {
   ) {
     const buyer_id = buyerId || userId;
     if (!buyer_id) throw new BadRequestException('buyer_id is required');
-
     const result = await this.ordersService.cancelOrder(id, buyer_id, reason);
     return { success: true, data: result };
   }
-  }
+}
