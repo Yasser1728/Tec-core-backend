@@ -4,11 +4,15 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { PrismaClient, OrderStatus, Prisma } from '../../prisma/client';
+import {
+  PrismaClient,
+  OrderStatus,
+  Prisma,
+  Product,
+} from '../../../prisma/client'; // ← 3 مستويات لأن الملف في src/modules/order/
 
 const prisma = new PrismaClient();
 
-// ── Types ──────────────────────────────────────────────────────
 type PrismaTx = Prisma.TransactionClient;
 
 export interface CreateOrderDto {
@@ -19,15 +23,15 @@ export interface CreateOrderDto {
 }
 
 export interface CheckoutDto {
-  order_id:        string;
-  payment_id:      string;
-  pi_payment_id?:  string;
+  order_id:       string;
+  payment_id:     string;
+  pi_payment_id?: string;
 }
 
 @Injectable()
 export class OrdersService {
 
-  // ── Create Order ──────────────────────────────────────────────
+  // ── Create Order ────────────────────────────────────────────
   async createOrder(dto: CreateOrderDto) {
     if (!dto.items?.length) {
       throw new BadRequestException('Order must have at least one item');
@@ -43,16 +47,17 @@ export class OrdersService {
     }
 
     for (const item of dto.items) {
-      const product = products.find((p) => p.id === item.product_id)!;
+      const product = products.find((p: Product) => p.id === item.product_id)!;
       if (product.stock < item.quantity) {
         throw new BadRequestException(`Insufficient stock for: ${product.title}`);
       }
     }
 
-    const total    = dto.items.reduce((sum, item) => {
-      const product = products.find((p) => p.id === item.product_id)!;
+    const total = dto.items.reduce((sum, item) => {
+      const product = products.find((p: Product) => p.id === item.product_id)!;
       return sum + product.price * item.quantity;
     }, 0);
+
     const currency = products[0].currency;
 
     const order = await prisma.$transaction(async (tx: PrismaTx) => {
@@ -65,7 +70,7 @@ export class OrdersService {
           notes:         dto.notes,
           items: {
             create: dto.items.map(item => {
-              const product = products.find((p) => p.id === item.product_id)!;
+              const product = products.find((p: Product) => p.id === item.product_id)!;
               return {
                 product_id: item.product_id,
                 quantity:   item.quantity,
@@ -99,7 +104,7 @@ export class OrdersService {
     return order;
   }
 
-  // ── Checkout ──────────────────────────────────────────────────
+  // ── Checkout ─────────────────────────────────────────────────
   async checkout(dto: CheckoutDto) {
     const order = await prisma.order.findUnique({ where: { id: dto.order_id } });
     if (!order) throw new NotFoundException('Order not found');
@@ -144,18 +149,20 @@ export class OrdersService {
     return updated;
   }
 
-  // ── Get Order ─────────────────────────────────────────────────
+  // ── Get Order ────────────────────────────────────────────────
   async getOrder(id: string, buyer_id?: string) {
     const order = await prisma.order.findUnique({
       where:   { id },
       include: { items: true, timeline: { orderBy: { created_at: 'asc' } } },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (buyer_id && order.buyer_id !== buyer_id) throw new NotFoundException('Order not found');
+    if (buyer_id && order.buyer_id !== buyer_id) {
+      throw new NotFoundException('Order not found');
+    }
     return order;
   }
 
-  // ── List Orders ───────────────────────────────────────────────
+  // ── List Orders ──────────────────────────────────────────────
   async listOrders(
     buyer_id: string,
     options: { page?: number; limit?: number; status?: string } = {},
@@ -184,7 +191,7 @@ export class OrdersService {
     };
   }
 
-  // ── Cancel Order ──────────────────────────────────────────────
+  // ── Cancel Order ─────────────────────────────────────────────
   async cancelOrder(id: string, buyer_id: string, reason?: string) {
     const order = await prisma.order.findUnique({
       where:   { id },
