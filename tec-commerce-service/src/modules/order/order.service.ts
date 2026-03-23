@@ -1,105 +1,237 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { PrismaClient, OrderStatus } from '../../prisma/client';
+
+const prisma = new PrismaClient();
+
+export interface CreateOrderDto {
+  buyer_id:      string;
+  items:         { product_id: string; quantity: number }[];
+  shipping_addr?: string;
+  notes?:        string;
+}
+
+export interface CheckoutDto {
+  order_id:     string;
+  payment_id:   string;
+  pi_payment_id?: string;
+}
 
 @Injectable()
-export class OrderService {
-  constructor(private readonly prisma: PrismaService) {}
+export class OrdersService {
 
-  async createOrder(data: {
-    buyerId: string;
-    items: { productId: string; quantity: number }[];
-  }) {
-    // جيب الـ products
-    const products = await Promise.all(
-      data.items.map(item => this.prisma.product.findUnique({
-        where: { id: item.productId },
-      }))
-    );
+  // ── Create Order ────────────────────────────────────────────
+  async createOrder(dto: CreateOrderDto) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('Order must have at least one item');
+    }
+
+    // جيب الـ products وتحقق من الـ stock
+    const productIds = dto.items.map(i => i.product_id);
+    const products   = await prisma.product.findMany({
+      where: { id: { in: productIds }, status: 'ACTIVE' },
+    });
+
+    if (products.length !== productIds.length) {
+      throw new BadRequestException('One or more products not found or inactive');
+    }
 
     // تحقق من الـ stock
-    for (let i = 0; i < data.items.length; i++) {
-      const product = products[i];
-      const item = data.items[i];
-
-      if (!product || product.status !== 'ACTIVE') {
-        throw new BadRequestException(`Product ${item.productId} is not available`);
-      }
-
+    for (const item of dto.items) {
+      const product = products.find(p => p.id === item.product_id)!;
       if (product.stock < item.quantity) {
-        throw new BadRequestException(`Insufficient stock for ${product.title}`);
+        throw new BadRequestException(
+          `Insufficient stock for product: ${product.title}`,
+        );
       }
     }
 
     // احسب الـ total
-    const total = data.items.reduce((sum, item, i) => {
-      return sum + (products[i]!.price * item.quantity);
+    const total = dto.items.reduce((sum, item) => {
+      const product = products.find(p => p.id === item.product_id)!;
+      return sum + product.price * item.quantity;
     }, 0);
 
-    // أنشئ الـ order في transaction
-    const order = await this.prisma.$transaction(async (tx) => {
+    const currency = products[0].currency;
+
+    // أنشئ الـ Order + Items + Timeline بشكل atomic
+    const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          buyer_id: data.buyerId,
+          buyer_id:     dto.buyer_id,
           total,
-          status: 'PENDING',
+          currency,
+          shipping_addr: dto.shipping_addr,
+          notes:         dto.notes,
           items: {
-            create: data.items.map((item, i) => ({
-              product_id: item.productId,
-              quantity: item.quantity,
-              price: products[i]!.price,
-            })),
+            create: dto.items.map(item => {
+              const product = products.find(p => p.id === item.product_id)!;
+              return {
+                product_id: item.product_id,
+                quantity:   item.quantity,
+                price:      product.price,
+                currency:   product.currency,
+                snapshot: {
+                  title:     product.title,
+                  image_url: product.image_url,
+                  seller_id: product.seller_id,
+                },
+              };
+            }),
+          },
+          timeline: {
+            create: {
+              status: 'PENDING',
+              note:   'Order created',
+            },
           },
         },
-        include: { items: { include: { product: true } } },
+        include: { items: true, timeline: true },
       });
 
-      // حدّث الـ stock
-      for (const item of data.items) {
+      // Reserve stock
+      for (const item of dto.items) {
         await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
+          where: { id: item.product_id },
+          data:  { stock: { decrement: item.quantity } },
         });
       }
 
       return newOrder;
     });
 
-    console.log(`[OrderService] Order created: ${order.id} total: ${total} PI`);
     return order;
   }
 
-  async getOrder(id: string, buyerId: string) {
-    const order = await this.prisma.order.findFirst({
-      where: { id, buyer_id: buyerId },
-      include: { items: { include: { product: true } } },
+  // ── Checkout — ربط الـ Order بالـ Payment ─────────────────
+  async checkout(dto: CheckoutDto) {
+    const order = await prisma.order.findUnique({
+      where: { id: dto.order_id },
     });
+
     if (!order) throw new NotFoundException('Order not found');
+
+    if (order.status !== 'PENDING') {
+      throw new ConflictException(
+        `Order is already ${order.status.toLowerCase()}`,
+      );
+    }
+
+    // تحقق من Idempotency — الـ payment_id مش مربوط بـ order تاني
+    if (dto.payment_id) {
+      const existing = await prisma.order.findUnique({
+        where: { payment_id: dto.payment_id },
+      });
+      if (existing && existing.id !== dto.order_id) {
+        throw new ConflictException('Payment already used for another order');
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedOrder = await tx.order.update({
+        where: { id: dto.order_id },
+        data: {
+          status:        'PAID',
+          payment_id:    dto.payment_id,
+          pi_payment_id: dto.pi_payment_id,
+          paid_at:       new Date(),
+        },
+        include: { items: true },
+      });
+
+      await tx.orderTimeline.create({
+        data: {
+          order_id:   dto.order_id,
+          status:     'PAID',
+          note:       `Payment confirmed: ${dto.payment_id}`,
+          created_by: 'payment-service',
+        },
+      });
+
+      return updatedOrder;
+    });
+
+    return updated;
+  }
+
+  // ── Get Order ───────────────────────────────────────────────
+  async getOrder(id: string, buyer_id?: string) {
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: { items: true, timeline: { orderBy: { created_at: 'asc' } } },
+    });
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    // تحقق إن المستخدم يملك الـ order
+    if (buyer_id && order.buyer_id !== buyer_id) {
+      throw new NotFoundException('Order not found');
+    }
+
     return order;
   }
 
-  async getUserOrders(buyerId: string) {
-    return this.prisma.order.findMany({
-      where: { buyer_id: buyerId },
-      include: { items: { include: { product: true } } },
-      orderBy: { created_at: 'desc' },
-    });
+  // ── List Orders ─────────────────────────────────────────────
+  async listOrders(buyer_id: string, options: { page?: number; limit?: number; status?: string } = {}) {
+    const { page = 1, limit = 10, status } = options;
+
+    const where: any = { buyer_id };
+    if (status) where.status = status;
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: { items: true },
+        orderBy: { created_at: 'desc' },
+        skip:    (page - 1) * limit,
+        take:    limit,
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    return {
+      orders,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      hasMore:    page * limit < total,
+    };
   }
 
-  async updateOrderStatus(
-    id: string,
-    status: 'PAID' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED',
-    paymentId?: string,
-  ) {
-    return this.prisma.order.update({
-      where: { id },
-      data: {
-        status,
-        ...(paymentId ? { payment_id: paymentId } : {}),
-      },
-    });
-  }
+  // ── Cancel Order ────────────────────────────────────────────
+  async cancelOrder(id: string, buyer_id: string, reason?: string) {
+    const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+
+    if (!order)                    throw new NotFoundException('Order not found');
+    if (order.buyer_id !== buyer_id) throw new NotFoundException('Order not found');
+
+    const cancellable: OrderStatus[] = ['PENDING'];
+    if (!cancellable.includes(order.status)) {
+      throw new ConflictException(`Cannot cancel order with status: ${order.status}`);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id },
+        data: {
+          status:       'CANCELLED',
+          cancelled_at: new Date(),
+          cancel_reason: reason,
+        },
+      });
+
+      await tx.orderTimeline.create({
+        data: { order_id: id, status: 'CANCELLED', note: reason ?? 'Cancelled by user', created_by: buyer_id },
+      });
+
+      // Return stock
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.product_id },
+          data:  { stock: { increment: item.quantity } },
+        });
       }
+    });
+
+    return { success: true, message: 'Order cancelled' };
+  }
+  }
