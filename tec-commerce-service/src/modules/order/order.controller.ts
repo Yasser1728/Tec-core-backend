@@ -1,67 +1,86 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Headers,
-  UnauthorizedException,
+  Controller, Get, Post, Patch, Body, Param, Query,
+  Headers, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { OrderService } from './order.service';
+import { OrdersService, CreateOrderDto, CheckoutDto } from './orders.service';
 
-@Controller('commerce/orders')
-export class OrderController {
-  constructor(
-    private readonly orderService: OrderService,
-    private readonly jwtService: JwtService,
-  ) {}
+@Controller('orders')
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
 
-  private getUserId(authorization: string): string {
-    if (!authorization?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing token');
-    }
-    const token = authorization.replace('Bearer ', '');
-    try {
-      const decoded = this.jwtService.verify(token) as any;
-      return decoded.sub ?? decoded.id;
-    } catch {
-      throw new UnauthorizedException('Invalid token');
-    }
-  }
-
-  // POST /commerce/orders
+  // ── POST /orders — إنشاء order جديد ───────────────────────
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   async createOrder(
-    @Headers('authorization') auth: string,
-    @Body() body: {
-      items: { productId: string; quantity: number }[];
-    },
+    @Body() body: CreateOrderDto & { buyer_id: string },
+    @Headers('x-user-id') userId: string,
   ) {
-    const buyerId = this.getUserId(auth);
-    const order = await this.orderService.createOrder({
-      buyerId,
-      items: body.items,
+    const buyer_id = body.buyer_id || userId;
+    if (!buyer_id) throw new BadRequestException('buyer_id is required');
+
+    const order = await this.ordersService.createOrder({
+      ...body,
+      buyer_id,
     });
+
     return { success: true, data: { order } };
   }
 
-  // GET /commerce/orders
-  @Get()
-  async getUserOrders(@Headers('authorization') auth: string) {
-    const buyerId = this.getUserId(auth);
-    const orders = await this.orderService.getUserOrders(buyerId);
-    return { success: true, data: { orders } };
+  // ── POST /orders/checkout — ربط بالـ payment ──────────────
+  @Post('checkout')
+  @HttpCode(HttpStatus.OK)
+  async checkout(@Body() dto: CheckoutDto) {
+    if (!dto.order_id || !dto.payment_id) {
+      throw new BadRequestException('order_id and payment_id are required');
+    }
+    const order = await this.ordersService.checkout(dto);
+    return { success: true, data: { order } };
   }
 
-  // GET /commerce/orders/:id
+  // ── GET /orders — قائمة orders للمستخدم ───────────────────
+  @Get()
+  async listOrders(
+    @Query('buyer_id') buyer_id: string,
+    @Query('page')     page: string,
+    @Query('limit')    limit: string,
+    @Query('status')   status: string,
+    @Headers('x-user-id') userId: string,
+  ) {
+    const id = buyer_id || userId;
+    if (!id) throw new BadRequestException('buyer_id is required');
+
+    const result = await this.ordersService.listOrders(id, {
+      page:   parseInt(page)  || 1,
+      limit:  parseInt(limit) || 10,
+      status,
+    });
+
+    return { success: true, data: result };
+  }
+
+  // ── GET /orders/:id — تفاصيل order ─────────────────────────
   @Get(':id')
   async getOrder(
-    @Headers('authorization') auth: string,
-    @Param('id') id: string,
+    @Param('id')          id: string,
+    @Headers('x-user-id') userId: string,
   ) {
-    const buyerId = this.getUserId(auth);
-    const order = await this.orderService.getOrder(id, buyerId);
+    const order = await this.ordersService.getOrder(id, userId);
     return { success: true, data: { order } };
   }
-}
+
+  // ── PATCH /orders/:id/cancel — إلغاء order ─────────────────
+  @Patch(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelOrder(
+    @Param('id')          id: string,
+    @Body('reason')       reason: string,
+    @Headers('x-user-id') userId: string,
+    @Body('buyer_id')     buyerId: string,
+  ) {
+    const buyer_id = buyerId || userId;
+    if (!buyer_id) throw new BadRequestException('buyer_id is required');
+
+    const result = await this.ordersService.cancelOrder(id, buyer_id, reason);
+    return { success: true, data: result };
+  }
+  }
