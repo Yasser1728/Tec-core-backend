@@ -2,9 +2,9 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query,
   Headers, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
-import { OrdersService, CreateOrderDto, CheckoutDto } from './order.service'; // ← order.service مش orders.service
+import { OrdersService, CreateOrderDto, CheckoutDto } from './order.service';
 
-@Controller('orders')
+@Controller('commerce/orders') // ← كان 'orders' — أضفنا commerce/
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
