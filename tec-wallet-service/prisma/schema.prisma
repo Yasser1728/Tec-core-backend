@@ -1,10 +1,6 @@
-// Prisma schema for TEC Wallet Service
-// Run `npx prisma generate` to generate the Prisma Client
-// Run `npx prisma migrate dev` to apply migrations
-
 generator client {
   provider = "prisma-client-js"
-  output   = "./client"
+  output   = "./prisma/client"
 }
 
 datasource db {
@@ -12,83 +8,235 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Wallet Models ────────────────────────────────────────────────────────────
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  username      String         @unique
+  password_hash String
+  kyc_status    String         @default("pending")
+  role          String         @default("user")
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  sessions      Session[]
+  wallets       Wallet[]
+  payments      Payment[]
+  subscriptions Subscription[]
+  devices       Device[]
+  kycData       KycData?
+  twoFactorAuth TwoFactorAuth?
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  user_id    String
+  device     String?
+  ip_address String?
+  token      String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token])
+  @@index([expires_at])
+  @@map("sessions")
+}
 
 model Wallet {
   id             String        @id @default(uuid())
   user_id        String
-  wallet_type    String
   wallet_address String?       @unique
-  currency       String
-  balance        Float         @default(0)
+  wallet_type    String
+  balance        Decimal       @default(0) @db.Decimal(20, 8)
+  currency       String        @default("PI")
   is_primary     Boolean       @default(false)
   created_at     DateTime      @default(now())
   updated_at     DateTime      @updatedAt
-  deleted_at     DateTime?
-  transactions   Transaction[]
+
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 
   @@index([user_id])
+  @@index([wallet_address])
   @@map("wallets")
 }
 
 model Transaction {
   id          String   @id @default(uuid())
   wallet_id   String
-  type        String
-  amount      Float
-  /// ISO 4217 currency code or asset symbol (e.g. "USD", "PI", "BTC")
-  asset_type  String   @default("USD")
+  type        String   // CREDIT | DEBIT
+  amount      Decimal  @db.Decimal(20, 8)
+  currency    String
+  asset_type  String   @default("PI")   // ← أضفناه
   status      String   @default("pending")
-  description String?
-  metadata    Json?
+  tx_hash     String?  @unique
+  from_addr   String?
+  to_addr     String?
+  memo        String?
+  description String?                   // ← أضفناه (idempotency key)
+  payment_id  String?                   // ← أضفناه
+  metadata    Json?                     // ← أضفناه
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
-  wallet      Wallet   @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+
+  wallet Wallet @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
 
   @@index([wallet_id])
+  @@index([tx_hash])
   @@index([status])
+  @@index([description])   // ← للـ idempotency lookup
+  @@index([payment_id])
   @@index([created_at])
   @@map("transactions")
 }
 
-// ─── Multi-currency Account ────────────────────────────────────────────────────
+model Payment {
+  id             String    @id @default(uuid())
+  user_id        String
+  amount         Decimal   @db.Decimal(20, 8)
+  currency       String    @default("PI")
+  status         String    @default("created")
+  payment_method String
+  pi_payment_id  String?   @unique
+  metadata       Json?
+  created_at     DateTime  @default(now())
+  approved_at    DateTime?
+  completed_at   DateTime?
+  failed_at      DateTime?
+  cancelled_at   DateTime?
+  updated_at     DateTime  @updatedAt
 
-/// Account tracks a per-currency balance for a user (separate from legacy Wallet).
-model Account {
-  id            String    @id @default(uuid())
-  user_id       String
-  /// ISO 4217 currency code or asset symbol (e.g. "USD", "PI", "BTC")
-  currency_code String
-  balance       Float     @default(0)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  deleted_at    DateTime?
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@unique([user_id, currency_code])
   @@index([user_id])
-  @@map("accounts")
+  @@index([pi_payment_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("payments")
 }
 
-// ─── Audit Log ────────────────────────────────────────────────────────────────
+model Plan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  currency    String   @default("PI")
+  features    Json
+  duration    Int      @default(30)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-/// Immutable audit trail entry written before every mutating operation.
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id         String    @id @default(uuid())
+  user_id    String
+  plan_id    String
+  status     String    @default("active")
+  start_date DateTime  @default(now())
+  end_date   DateTime
+  auto_renew Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [plan_id], references: [id])
+
+  @@index([user_id])
+  @@index([plan_id])
+  @@index([status])
+  @@index([end_date])
+  @@map("subscriptions")
+}
+
+model Device {
+  id          String   @id @default(uuid())
+  user_id     String
+  device_name String
+  device_type String?
+  user_agent  String?
+  last_login  DateTime @default(now())
+  trusted     Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([trusted])
+  @@map("devices")
+}
+
+model KycData {
+  id             String    @id @default(uuid())
+  user_id        String    @unique
+  full_name      String
+  date_of_birth  DateTime
+  country        String
+  document_type  String
+  document_id    String
+  status         String    @default("PENDING")
+  rejection_note String?
+  submitted_at   DateTime  @default(now())
+  verified_at    DateTime?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@map("kyc_data")
+}
+
+model TwoFactorAuth {
+  id           String    @id @default(uuid())
+  user_id      String    @unique
+  secret       String
+  enabled      Boolean   @default(false)
+  backup_codes String[]
+  enabled_at   DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("two_factor_auth")
+}
+
+// ── AuditLog ─────────────────────────────────────────────────
 model AuditLog {
-  id         String   @id @default(uuid())
-  /// High-level action name, e.g. "deposit", "withdraw", "transfer"
-  action     String
-  /// Entity type, e.g. "wallet", "account", "transaction"
-  entity     String
-  /// Primary key of the affected entity
-  entity_id  String
-  user_id    String?
-  /// Snapshot of relevant state captured before the mutation
-  before     Json?
-  /// Snapshot of relevant state captured after the mutation
-  after      Json?
-  metadata   Json?
+  id        String   @id @default(uuid())
+  action    String                          // credit | debit | freeze
+  entity    String                          // wallet | transaction
+  entity_id String
+  user_id   String
+  before    Json?
+  after     Json?
+  metadata  Json?
   created_at DateTime @default(now())
 
-  @@index([entity, entity_id])
+  @@index([entity_id])
   @@index([user_id])
+  @@index([action])
+  @@index([created_at])
   @@map("audit_logs")
+}
+
+// ── Idempotency ───────────────────────────────────────────────
+model ProcessedEvent {
+  id           String   @id @default(uuid())
+  event_key    String   @unique   // "payment.completed:PAY_ID"
+  user_id      String
+  processed_at DateTime @default(now())
+
+  @@index([event_key])
+  @@index([user_id])
+  @@map("processed_events")
 }
