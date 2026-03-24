@@ -1,26 +1,20 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Headers,
-  Query,
+  Controller, Get, Post, Patch, Body, Param, Query,
+  Headers, HttpCode, HttpStatus, BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ProductService } from './product.service';
+import { OrdersService, CreateOrderDto, CheckoutDto } from './order.service';
 
-@Controller('commerce/products')
-export class ProductController {
+@Controller('commerce/orders')
+export class OrdersController {
   constructor(
-    private readonly productService: ProductService,
+    private readonly ordersService: OrdersService,
     private readonly jwtService: JwtService,
   ) {}
 
-  private getUserId(authorization: string): string {
+  // ── JWT helper — نفس نمط ProductController ────────────────
+  private getUserId(authorization?: string): string {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing token');
     }
@@ -33,69 +27,75 @@ export class ProductController {
     }
   }
 
-  // GET /commerce/products
-  @Get()
-  async findAll(
-    @Query('category') category?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-  ) {
-    const products = await this.productService.findAll({
-      category,
-      limit: limit ? parseInt(limit) : 20,
-      offset: offset ? parseInt(offset) : 0,
-    });
-    return { success: true, data: { products } };
-  }
-
-  // GET /commerce/products/:id
-  @Get(':id')
-  async findById(@Param('id') id: string) {
-    const product = await this.productService.findById(id);
-    return { success: true, data: { product } };
-  }
-
-  // POST /commerce/products
+  // ── POST /commerce/orders ─────────────────────────────────
   @Post()
-  async create(
+  @HttpCode(HttpStatus.CREATED)
+  async createOrder(
     @Headers('authorization') auth: string,
-    @Body() body: {
-      title: string;
-      description?: string;
-      price: number;
-      imageUrl?: string;
-      stock: number;
-      category?: string;
-    },
+    @Body() body: Omit<CreateOrderDto, 'buyer_id'> & { buyer_id?: string },
   ) {
-    const sellerId = this.getUserId(auth);
-    const product = await this.productService.create({
-      sellerId,
-      ...body,
+    const buyer_id = body.buyer_id || this.getUserId(auth);
+    const order = await this.ordersService.createOrder({ ...body, buyer_id });
+    return { success: true, data: { order } };
+  }
+
+  // ── POST /commerce/orders/checkout ───────────────────────
+  @Post('checkout')
+  @HttpCode(HttpStatus.OK)
+  async checkout(
+    @Headers('authorization') auth: string,
+    @Body() dto: CheckoutDto,
+  ) {
+    if (!dto.order_id || !dto.payment_id) {
+      throw new BadRequestException('order_id and payment_id are required');
+    }
+    // تحقق من الـ token
+    this.getUserId(auth);
+    const order = await this.ordersService.checkout(dto);
+    return { success: true, data: { order } };
+  }
+
+  // ── GET /commerce/orders ──────────────────────────────────
+  @Get()
+  async listOrders(
+    @Headers('authorization') auth: string,
+    @Query('buyer_id') buyerIdQuery: string,
+    @Query('page')     page: string,
+    @Query('limit')    limit: string,
+    @Query('status')   status: string,
+  ) {
+    // buyer_id من الـ token أو الـ query
+    const buyer_id = buyerIdQuery || this.getUserId(auth);
+    const result = await this.ordersService.listOrders(buyer_id, {
+      page:  parseInt(page)  || 1,
+      limit: parseInt(limit) || 10,
+      status,
     });
-    return { success: true, data: { product } };
+    return { success: true, data: result };
   }
 
-  // PATCH /commerce/products/:id
-  @Patch(':id')
-  async update(
-    @Headers('authorization') auth: string,
-    @Param('id') id: string,
-    @Body() body: any,
-  ) {
-    const sellerId = this.getUserId(auth);
-    const product = await this.productService.update(id, sellerId, body);
-    return { success: true, data: { product } };
-  }
-
-  // DELETE /commerce/products/:id
-  @Delete(':id')
-  async delete(
+  // ── GET /commerce/orders/:id ──────────────────────────────
+  @Get(':id')
+  async getOrder(
     @Headers('authorization') auth: string,
     @Param('id') id: string,
   ) {
-    const sellerId = this.getUserId(auth);
-    await this.productService.delete(id, sellerId);
-    return { success: true };
+    const userId = this.getUserId(auth);
+    const order  = await this.ordersService.getOrder(id, userId);
+    return { success: true, data: { order } };
   }
-}
+
+  // ── PATCH /commerce/orders/:id/cancel ────────────────────
+  @Patch(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelOrder(
+    @Headers('authorization') auth: string,
+    @Param('id')          id: string,
+    @Body('reason')       reason: string,
+    @Body('buyer_id')     buyerId: string,
+  ) {
+    const buyer_id = buyerId || this.getUserId(auth);
+    const result   = await this.ordersService.cancelOrder(id, buyer_id, reason);
+    return { success: true, data: result };
+  }
+    }
