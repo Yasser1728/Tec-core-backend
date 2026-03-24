@@ -73,3 +73,29 @@ export class OrdersController {
     });
     return { success: true, data: result };
   }
+
+  // ── GET /commerce/orders/:id ──────────────────────────────
+  @Get(':id')
+  async getOrder(
+    @Headers('authorization') auth: string,
+    @Param('id') id: string,
+  ) {
+    const userId = this.getUserId(auth);
+    const order  = await this.ordersService.getOrder(id, userId);
+    return { success: true, data: { order } };
+  }
+
+  // ── PATCH /commerce/orders/:id/cancel ────────────────────
+  @Patch(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelOrder(
+    @Headers('authorization') auth: string,
+    @Param('id')          id: string,
+    @Body('reason')       reason: string,
+    @Body('buyer_id')     buyerId: string,
+  ) {
+    const buyer_id = buyerId || this.getUserId(auth);
+    const result   = await this.ordersService.cancelOrder(id, buyer_id, reason);
+    return { success: true, data: result };
+  }
+  }
