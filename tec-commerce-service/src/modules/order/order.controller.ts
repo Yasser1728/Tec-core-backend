@@ -13,21 +13,21 @@ export class OrdersController {
     private readonly jwtService: JwtService,
   ) {}
 
-  // ── JWT helper — نفس نمط ProductController ────────────────
+  // ← decode بدل verify — الـ Gateway بيعمل verify قبلنا
   private getUserId(authorization?: string): string {
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing token');
     }
     const token = authorization.replace('Bearer ', '');
     try {
-      const decoded = this.jwtService.verify(token) as any;
+      const decoded = this.jwtService.decode(token) as any;
+      if (!decoded) throw new Error('Invalid token');
       return decoded.sub ?? decoded.id;
     } catch {
       throw new UnauthorizedException('Invalid token');
     }
   }
 
-  // ── POST /commerce/orders ─────────────────────────────────
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createOrder(
@@ -39,7 +39,6 @@ export class OrdersController {
     return { success: true, data: { order } };
   }
 
-  // ── POST /commerce/orders/checkout ───────────────────────
   @Post('checkout')
   @HttpCode(HttpStatus.OK)
   async checkout(
@@ -49,13 +48,11 @@ export class OrdersController {
     if (!dto.order_id || !dto.payment_id) {
       throw new BadRequestException('order_id and payment_id are required');
     }
-    // تحقق من الـ token
     this.getUserId(auth);
     const order = await this.ordersService.checkout(dto);
     return { success: true, data: { order } };
   }
 
-  // ── GET /commerce/orders ──────────────────────────────────
   @Get()
   async listOrders(
     @Headers('authorization') auth: string,
@@ -64,7 +61,6 @@ export class OrdersController {
     @Query('limit')    limit: string,
     @Query('status')   status: string,
   ) {
-    // buyer_id من الـ token أو الـ query
     const buyer_id = buyerIdQuery || this.getUserId(auth);
     const result = await this.ordersService.listOrders(buyer_id, {
       page:  parseInt(page)  || 1,
@@ -74,7 +70,6 @@ export class OrdersController {
     return { success: true, data: result };
   }
 
-  // ── GET /commerce/orders/:id ──────────────────────────────
   @Get(':id')
   async getOrder(
     @Headers('authorization') auth: string,
@@ -85,7 +80,6 @@ export class OrdersController {
     return { success: true, data: { order } };
   }
 
-  // ── PATCH /commerce/orders/:id/cancel ────────────────────
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancelOrder(
@@ -98,4 +92,4 @@ export class OrdersController {
     const result   = await this.ordersService.cancelOrder(id, buyer_id, reason);
     return { success: true, data: result };
   }
-  }
+}
