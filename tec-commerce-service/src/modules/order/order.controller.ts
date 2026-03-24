@@ -13,19 +13,22 @@ export class OrdersController {
     private readonly jwtService: JwtService,
   ) {}
 
-  // ← decode بدل verify — الـ Gateway بيعمل verify قبلنا
-  private getUserId(authorization?: string): string {
-    if (!authorization?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing token');
-    }
-    const token = authorization.replace('Bearer ', '');
+  // ← بترجع null بدل ما ترمي exception
+  private tryGetUserId(authorization?: string): string | null {
+    if (!authorization?.startsWith('Bearer ')) return null;
     try {
+      const token   = authorization.replace('Bearer ', '');
       const decoded = this.jwtService.decode(token) as any;
-      if (!decoded) throw new Error('Invalid token');
-      return decoded.sub ?? decoded.id;
+      return decoded?.sub ?? decoded?.id ?? null;
     } catch {
-      throw new UnauthorizedException('Invalid token');
+      return null;
     }
+  }
+
+  private requireUserId(authorization?: string, fallback?: string): string {
+    const id = fallback || this.tryGetUserId(authorization);
+    if (!id) throw new UnauthorizedException('Missing or invalid token');
+    return id;
   }
 
   @Post()
@@ -34,8 +37,8 @@ export class OrdersController {
     @Headers('authorization') auth: string,
     @Body() body: Omit<CreateOrderDto, 'buyer_id'> & { buyer_id?: string },
   ) {
-    const buyer_id = body.buyer_id || this.getUserId(auth);
-    const order = await this.ordersService.createOrder({ ...body, buyer_id });
+    const buyer_id = this.requireUserId(auth, body.buyer_id);
+    const order    = await this.ordersService.createOrder({ ...body, buyer_id });
     return { success: true, data: { order } };
   }
 
@@ -48,7 +51,7 @@ export class OrdersController {
     if (!dto.order_id || !dto.payment_id) {
       throw new BadRequestException('order_id and payment_id are required');
     }
-    this.getUserId(auth);
+    this.tryGetUserId(auth); // optional check — لا نرفض حتى لو مش موجود
     const order = await this.ordersService.checkout(dto);
     return { success: true, data: { order } };
   }
@@ -61,8 +64,9 @@ export class OrdersController {
     @Query('limit')    limit: string,
     @Query('status')   status: string,
   ) {
-    const buyer_id = buyerIdQuery || this.getUserId(auth);
-    const result = await this.ordersService.listOrders(buyer_id, {
+    // buyer_id من الـ query أولاً — بعدين من الـ token
+    const buyer_id = this.requireUserId(auth, buyerIdQuery);
+    const result   = await this.ordersService.listOrders(buyer_id, {
       page:  parseInt(page)  || 1,
       limit: parseInt(limit) || 10,
       status,
@@ -74,8 +78,9 @@ export class OrdersController {
   async getOrder(
     @Headers('authorization') auth: string,
     @Param('id') id: string,
+    @Query('buyer_id') buyerIdQuery: string,
   ) {
-    const userId = this.getUserId(auth);
+    const userId = this.requireUserId(auth, buyerIdQuery);
     const order  = await this.ordersService.getOrder(id, userId);
     return { success: true, data: { order } };
   }
@@ -84,11 +89,11 @@ export class OrdersController {
   @HttpCode(HttpStatus.OK)
   async cancelOrder(
     @Headers('authorization') auth: string,
-    @Param('id')          id: string,
-    @Body('reason')       reason: string,
-    @Body('buyer_id')     buyerId: string,
+    @Param('id')      id: string,
+    @Body('reason')   reason: string,
+    @Body('buyer_id') buyerId: string,
   ) {
-    const buyer_id = buyerId || this.getUserId(auth);
+    const buyer_id = this.requireUserId(auth, buyerId);
     const result   = await this.ordersService.cancelOrder(id, buyer_id, reason);
     return { success: true, data: result };
   }
