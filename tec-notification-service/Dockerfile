@@ -24,12 +24,16 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma/ ./prisma/
 
-# ✅ install كل الـ dependencies مش production بس
 RUN npm install --ignore-scripts && npm cache clean --force
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 5006
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:5006/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
