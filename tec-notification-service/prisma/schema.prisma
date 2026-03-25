@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "./client"
 }
 
 datasource db {
@@ -33,11 +34,11 @@ model Notification {
 }
 
 model NotificationPreference {
-  id           String  @id @default(uuid())
-  user_id      String  @unique
-  in_app       Boolean @default(true)
-  email        Boolean @default(false)
-  push         Boolean @default(false)
+  id      String  @id @default(uuid())
+  user_id String  @unique
+  in_app  Boolean @default(true)
+  email   Boolean @default(false)
+  push    Boolean @default(false)
 
   @@map("notification_preferences")
 }
