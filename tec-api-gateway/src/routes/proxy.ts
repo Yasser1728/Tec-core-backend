@@ -4,94 +4,66 @@ import { injectInternalKey } from '../middleware/internal-auth';
 
 const router = Router();
 
-// Service URLs from environment
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
-const WALLET_SERVICE_URL = process.env.WALLET_SERVICE_URL || 'http://localhost:5002';
-const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:5003';
+const AUTH_SERVICE_URL     = process.env.AUTH_SERVICE_URL     || 'http://localhost:5001';
+const WALLET_SERVICE_URL   = process.env.WALLET_SERVICE_URL   || 'http://localhost:5002';
+const PAYMENT_SERVICE_URL  = process.env.PAYMENT_SERVICE_URL  || 'http://localhost:5003';
+const COMMERCE_SERVICE_URL = process.env.COMMERCE_SERVICE_URL || 'https://commerce-service-production.up.railway.app';
 
-// Proxy configuration options
 const createProxyOptions = (target: string): Options => ({
   target,
   changeOrigin: true,
-  pathRewrite: (path) => {
-    // Remove /api prefix when forwarding to services
-    return path.replace(/^\/api/, '');
-  },
+  pathRewrite: (path) => path.replace(/^\/api/, ''),
   onProxyReq: (proxyReq, req) => {
-    // Forward the correlation ID so downstream services can include it in logs.
     const requestId = req.headers['x-request-id'];
-    if (requestId) {
-      proxyReq.setHeader('x-request-id', requestId);
-    }
+    if (requestId) proxyReq.setHeader('x-request-id', requestId);
   },
-  onProxyRes: (_proxyRes, _req) => {
-    // Intentionally left minimal — pino-http logs both request and response.
-  },
+  onProxyRes: (_proxyRes, _req) => {},
   onError: (err, req, res) => {
     console.error(`[Proxy Error] ${req.method} ${req.path}:`, err.message);
     res.status(503).json({
       success: false,
-      error: {
-        code: 'SERVICE_UNAVAILABLE',
-        message: 'Service temporarily unavailable',
-      },
+      error: { code: 'SERVICE_UNAVAILABLE', message: 'Service temporarily unavailable' },
     });
   },
 });
 
-// Auth Service routes: /api/auth/*
-router.use(
-  '/auth',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
-);
+// ── Auth Service ───────────────────────────────────────────────
+router.use('/auth',          injectInternalKey, createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL)));
+router.use('/subscriptions', injectInternalKey, createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL)));
+router.use('/kyc',           injectInternalKey, createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL)));
+router.use('/security',      injectInternalKey, createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL)));
+router.use('/profile',       injectInternalKey, createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL)));
 
-// Subscription routes: /api/subscriptions/*
-router.use(
-  '/subscriptions',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
-);
+// ── Wallet Service ─────────────────────────────────────────────
+router.use('/wallets', injectInternalKey, createProxyMiddleware(createProxyOptions(WALLET_SERVICE_URL)));
 
-// KYC routes: /api/kyc/*
-router.use(
-  '/kyc',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
-);
+// ── Payment Service ────────────────────────────────────────────
+router.use('/payments/webhook', createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL)));
+router.use('/payments',         injectInternalKey, createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL)));
 
-// Security routes: /api/security/*
+// ── Commerce Service ← جديد ───────────────────────────────────
 router.use(
-  '/security',
+  '/commerce',
   injectInternalKey,
-  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
-);
-
-// Profile routes: /api/profile/*
-router.use(
-  '/profile',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(AUTH_SERVICE_URL))
-);
-
-// Wallet Service routes: /api/wallets/*
-router.use(
-  '/wallets',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(WALLET_SERVICE_URL))
-);
-
-// Payment Service routes: /api/payments/*
-// Webhook sub-routes must NOT have the internal key injected — Pi Network
-// is the caller and must be authenticated by the payment service using PI_API_KEY.
-router.use(
-  '/payments/webhook',
-  createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL))
-);
-router.use(
-  '/payments',
-  injectInternalKey,
-  createProxyMiddleware(createProxyOptions(PAYMENT_SERVICE_URL))
+  createProxyMiddleware({
+    target:       COMMERCE_SERVICE_URL,
+    changeOrigin: true,
+    pathRewrite:  { '^/api/commerce': '/commerce' },
+    onProxyReq: (proxyReq, req) => {
+      const auth = req.headers['authorization'];
+      if (auth) proxyReq.setHeader('Authorization', String(auth));
+      const secret = process.env.INTERNAL_SECRET;
+      if (secret) proxyReq.setHeader('x-internal-key', secret);
+      const requestId = req.headers['x-request-id'];
+      if (requestId) proxyReq.setHeader('x-request-id', String(requestId));
+    },
+    onError: (_err, _req, res) => {
+      res.status(503).json({
+        success: false,
+        error: { code: 'SERVICE_UNAVAILABLE', message: 'Commerce service unavailable' },
+      });
+    },
+  }),
 );
 
 export default router;
