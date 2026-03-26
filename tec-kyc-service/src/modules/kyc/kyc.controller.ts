@@ -27,9 +27,10 @@ export class KycController {
     }
     const token = authorization.replace('Bearer ', '');
     try {
-      const decoded = this.jwtService.verify(token) as any;
+      const decoded = this.jwtService.decode(token) as any; // ← verify → decode
+      if (!decoded) throw new Error('Invalid token');
       return {
-        userId: decoded.sub ?? decoded.id,
+        userId:   decoded.sub ?? decoded.id,
         piUserId: decoded.pi_uid ?? decoded.sub,
         username: decoded.pi_username ?? 'unknown',
       };
@@ -38,7 +39,6 @@ export class KycController {
     }
   }
 
-  // GET /kyc/status
   @Get('status')
   async getStatus(@Headers('authorization') auth: string) {
     const { userId, piUserId, username } = this.getUserInfo(auth);
@@ -46,7 +46,6 @@ export class KycController {
     return { success: true, data: { kyc } };
   }
 
-  // POST /kyc/start
   @Post('start')
   async startKyc(@Headers('authorization') auth: string) {
     const { userId } = this.getUserInfo(auth);
@@ -54,22 +53,16 @@ export class KycController {
     return { success: true, data: { kyc } };
   }
 
-  // POST /kyc/upload
   @Post('upload')
   async uploadDocuments(
     @Headers('authorization') auth: string,
-    @Body() body: {
-      idFrontUrl?: string;
-      idBackUrl?: string;
-      selfieUrl?: string;
-    },
+    @Body() body: { idFrontUrl?: string; idBackUrl?: string; selfieUrl?: string },
   ) {
     const { userId } = this.getUserInfo(auth);
     const kyc = await this.kycService.uploadDocuments(userId, body);
     return { success: true, data: { kyc } };
   }
 
-  // POST /kyc/submit
   @Post('submit')
   async submitKyc(@Headers('authorization') auth: string) {
     const { userId } = this.getUserInfo(auth);
@@ -77,8 +70,6 @@ export class KycController {
     return { success: true, data: { kyc } };
   }
 
-  // ─── Admin endpoints ──────────────────────────────────
-  // POST /kyc/admin/verify/:userId
   @Post('admin/verify/:userId')
   async verifyKyc(
     @Param('userId') userId: string,
@@ -88,7 +79,6 @@ export class KycController {
     return { success: true, data: { kyc } };
   }
 
-  // POST /kyc/admin/reject/:userId
   @Post('admin/reject/:userId')
   async rejectKyc(
     @Param('userId') userId: string,
