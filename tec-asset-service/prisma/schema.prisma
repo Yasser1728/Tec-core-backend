@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "./client"
 }
 
 datasource db {
@@ -7,7 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── Enums ──
 enum AssetCategory {
   DOMAIN
   REAL_ESTATE
@@ -21,32 +21,28 @@ enum AssetStatus {
   ON_SALE
 }
 
-// ── Asset Model ──
 model Asset {
-  id            String          @id @default(uuid())
-  transactionId String          @unique
+  id            String        @id @default(uuid())
+  transactionId String        @unique
   ownerId       String
-  slug          String          @unique
+  slug          String        @unique
   category      AssetCategory
-  status        AssetStatus     @default(ACTIVE) // Asset lifecycle status
-  metadata      Json            // Store extra details (domain extension, geo-location, etc.)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  status        AssetStatus   @default(ACTIVE)
+  metadata      Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   history       AssetHistory[]
 
-  @@index([ownerId]) // Optimize queries for user-owned assets
+  @@index([ownerId])
 }
 
-// ── Asset Ownership History ──
 model AssetHistory {
   id            String   @id @default(uuid())
   assetId       String
   toOwnerId     String
   transactionId String
   createdAt     DateTime @default(now())
-
-  // Relation to Asset
-  asset Asset @relation(fields: [assetId], references: [id])
+  asset         Asset    @relation(fields: [assetId], references: [id])
 
   @@index([assetId])
   @@index([toOwnerId])
