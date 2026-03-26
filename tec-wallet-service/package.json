@@ -57,6 +57,12 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/__tests__/**/*.test.ts"
-    ]
+    ],
+    "setupFiles": [
+      "./__tests__/setup.ts"
+    ],
+    "moduleNameMapper": {
+      "^../../prisma/client$": "<rootDir>/__tests__/__mocks__/prisma.ts"
+    }
   }
 }
