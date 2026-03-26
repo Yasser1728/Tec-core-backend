@@ -23,14 +23,14 @@ export class NotificationController {
     }
     const token = authorization.replace('Bearer ', '');
     try {
-      const decoded = this.jwtService.verify(token) as any;
+      const decoded = this.jwtService.decode(token) as any; // ← verify → decode
+      if (!decoded) throw new Error('Invalid token');
       return decoded.sub ?? decoded.id ?? decoded.userId;
     } catch {
       throw new UnauthorizedException('Invalid token');
     }
   }
 
-  // GET /notifications
   @Get()
   async getNotifications(
     @Headers('authorization') auth: string,
@@ -45,7 +45,6 @@ export class NotificationController {
     return { success: true, data: { notifications, unreadCount } };
   }
 
-  // PATCH /notifications/:id/read
   @Patch(':id/read')
   async markAsRead(
     @Headers('authorization') auth: string,
@@ -56,7 +55,6 @@ export class NotificationController {
     return { success: true };
   }
 
-  // PATCH /notifications/read-all
   @Patch('read-all')
   async markAllAsRead(@Headers('authorization') auth: string) {
     const userId = this.getUserId(auth);
