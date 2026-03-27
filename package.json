@@ -10,12 +10,27 @@
     "tec-wallet-service"
   ],
   "scripts": {
-    "start": "npm run start --workspace=tec-api-gateway",
-    "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run prisma:generate && npm run build --workspaces --if-present",
-    "prisma:generate": "npm run prisma:generate --workspaces --if-present"
+    "start":           "npm run start --workspace=tec-api-gateway",
+    "dev":             "npm run dev --workspaces --if-present",
+    "build":           "npm run prisma:generate && npm run build --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspaces --if-present",
+    "test":            "npm run test --workspaces --if-present",
+    "test:coverage":   "npm run test:coverage --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  }
+}
+الـ fix الأساسي هو في tec-wallet-service/package.json — عدّل الـ jest section:
+"jest": {
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "testMatch": ["**/__tests__/**/*.test.ts"],
+  "setupFiles": ["./__tests__/setup.ts"],
+  "testTimeout": 10000,
+  "forceExit": true,
+  "detectOpenHandles": false,
+  "moduleNameMapper": {
+    "^../../prisma/client$": "<rootDir>/__tests__/__mocks__/prisma.ts"
   }
 }
