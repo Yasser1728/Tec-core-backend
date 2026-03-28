@@ -1,18 +1,31 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/tec-payment-service"
     schedule:
       interval: "monthly"
-      day: "monday"
-    open-pull-requests-limit: 3
-    groups:
-      production:
-        patterns: ["*"]
-        exclude-patterns: ["@types/*", "eslint*"]
-      dev-dependencies:
-        dependency-type: "development"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-wallet-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-api-gateway"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-auth-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 2
