@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { AssetService } from '../src/modules/asset/asset.service';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { AssetCategory } from '../src/modules/asset/dto/create-asset.dto';
 
 const mockPrisma = {
   asset: {
@@ -17,7 +18,7 @@ const baseAsset = {
   transactionId: 'tx-uuid-001',
   ownerId:       'user-001',
   slug:          'test-domain.pi',
-  category:      'DOMAIN',
+  category:      AssetCategory.DOMAIN,
   status:        'ACTIVE',
   metadata:      { extension: '.pi' },
   createdAt:     new Date(),
@@ -29,7 +30,7 @@ const baseDto = {
   transactionId: 'tx-uuid-001',
   userId:        'user-001',
   slug:          'test-domain.pi',
-  category:      'DOMAIN' as const,
+  category:      AssetCategory.DOMAIN,
   metadata:      { extension: '.pi' },
 };
 
@@ -81,8 +82,8 @@ describe('AssetService — provisionAsset', () => {
     mockPrisma.$transaction.mockImplementation(async (fn: Function) => fn({
       asset: {
         findUnique: jest.fn()
-          .mockResolvedValueOnce(null)        // transactionId not found
-          .mockResolvedValueOnce(baseAsset),  // slug already exists
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(baseAsset),
         create: jest.fn(),
       },
     }));
@@ -110,7 +111,7 @@ describe('AssetService — provisionAsset', () => {
           ownerId:       'user-001',
           transactionId: 'tx-uuid-001',
           slug:          'test-domain.pi',
-          category:      'DOMAIN',
+          category:      AssetCategory.DOMAIN,
         }),
       }),
     );
@@ -150,7 +151,7 @@ describe('AssetService — provisionAsset', () => {
       },
     }));
 
-    await service.provisionAsset({ ...baseDto, metadata: undefined });
+    await service.provisionAsset({ ...baseDto, metadata: undefined as any });
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
