@@ -23,6 +23,8 @@ jobs:
           - tec-auth-service
           - tec-payment-service
           - tec-wallet-service
+          - tec-notification-service
+          - tec-kyc-service
 
     defaults:
       run:
@@ -64,13 +66,17 @@ jobs:
       matrix:
         include:
           - service: tec-api-gateway
-            image: tec-api-gateway
+            image:   tec-api-gateway
           - service: tec-auth-service
-            image: tec-auth-service
+            image:   tec-auth-service
           - service: tec-payment-service
-            image: tec-payment-service
+            image:   tec-payment-service
           - service: tec-wallet-service
-            image: tec-wallet-service
+            image:   tec-wallet-service
+          - service: tec-notification-service
+            image:   tec-notification-service
+          - service: tec-kyc-service
+            image:   tec-kyc-service
 
     steps:
       - name: Checkout code
@@ -83,11 +89,11 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service }}
-          file: ${{ matrix.service }}/Dockerfile
-          push: false
-          tags: ${{ matrix.image }}:${{ github.sha }}
+          file:    ${{ matrix.service }}/Dockerfile
+          push:    false
+          tags:    ${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to:   type=gha,mode=max
 
   migrate:
     name: DB Migration (${{ matrix.service }})
@@ -100,7 +106,12 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        service: [tec-auth-service, tec-payment-service, tec-wallet-service]
+        service:
+          - tec-auth-service
+          - tec-payment-service
+          - tec-wallet-service
+          - tec-notification-service
+          - tec-kyc-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -144,7 +155,13 @@ jobs:
       max-parallel: 4
       fail-fast: false
       matrix:
-        service: [tec-api-gateway, tec-auth-service, tec-payment-service, tec-wallet-service]
+        service:
+          - tec-api-gateway
+          - tec-auth-service
+          - tec-payment-service
+          - tec-wallet-service
+          - tec-notification-service
+          - tec-kyc-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
