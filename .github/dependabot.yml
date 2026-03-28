@@ -3,20 +3,16 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     groups:
       production:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "@types/*"
-          - "eslint*"
-          - "prettier"
+        patterns: ["*"]
+        exclude-patterns: ["@types/*", "eslint*"]
       dev-dependencies:
         dependency-type: "development"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
