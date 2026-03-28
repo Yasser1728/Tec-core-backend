@@ -25,6 +25,7 @@ jobs:
           - tec-wallet-service
           - tec-notification-service
           - tec-kyc-service
+          - tec-commerce-service
 
     defaults:
       run:
@@ -75,6 +76,8 @@ jobs:
             image:   tec-notification-service
           - service: tec-kyc-service
             image:   tec-kyc-service
+          - service: tec-commerce-service
+            image:   tec-commerce-service
 
     steps:
       - name: Checkout code
@@ -110,6 +113,8 @@ jobs:
           - tec-wallet-service
           - tec-notification-service
           - tec-kyc-service
+          - tec-commerce-service
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -160,6 +165,8 @@ jobs:
           - tec-wallet-service
           - tec-notification-service
           - tec-kyc-service
+          - tec-commerce-service
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
