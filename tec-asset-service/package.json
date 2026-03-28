@@ -50,8 +50,9 @@
     "testTimeout":     10000,
     "forceExit":       true,
     "moduleNameMapper": {
-      "^\\.\\./\\.\\./prisma/client$":    "<rootDir>/__tests__/__mocks__/prisma.ts",
-      "^\\.\\./\\.\\.\\./prisma/client$": "<rootDir>/__tests__/__mocks__/prisma.ts"
+      "^@prisma/client$":                  "<rootDir>/__tests__/__mocks__/prisma.ts",
+      "^\\.\\./\\.\\./prisma/client$":     "<rootDir>/__tests__/__mocks__/prisma.ts",
+      "^\\.\\./\\.\\.\\./prisma/client$":  "<rootDir>/__tests__/__mocks__/prisma.ts"
     }
   }
 }
