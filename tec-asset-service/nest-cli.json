@@ -7,5 +7,3 @@
     "deleteOutDir": true
   }
 }
-tec-asset-service/package.json — الـ build script:
-"build": "nest build",
