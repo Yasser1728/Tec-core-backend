@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "prebuild":        "prisma generate --schema=./prisma/schema.prisma",
-    "build":           "nest build",
+    "build":           "nest build --tsc-config tsconfig.build.json",
     "start":           "node dist/main",
     "start:dev":       "nest start --watch",
     "start:prod":      "node dist/main",
