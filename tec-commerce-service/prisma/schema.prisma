@@ -24,6 +24,19 @@ enum OrderStatus {
   REFUNDED
 }
 
+enum SubscriptionPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
 model Product {
   id          String        @id @default(uuid())
   seller_id   String
@@ -48,22 +61,22 @@ model Product {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  buyer_id        String
-  status          OrderStatus @default(PENDING)
-  total           Float
-  currency        String      @default("PI")
-  payment_id      String?     @unique  // ← ربط مع Payment Service
-  pi_payment_id   String?     @unique  // ← Pi Network payment ID
-  shipping_addr   String?
-  notes           String?
-  paid_at         DateTime?
-  shipped_at      DateTime?
-  delivered_at    DateTime?
-  cancelled_at    DateTime?
-  cancel_reason   String?
-  created_at      DateTime    @default(now())
-  updated_at      DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  buyer_id      String
+  status        OrderStatus @default(PENDING)
+  total         Float
+  currency      String      @default("PI")
+  payment_id    String?     @unique
+  pi_payment_id String?     @unique
+  shipping_addr String?
+  notes         String?
+  paid_at       DateTime?
+  shipped_at    DateTime?
+  delivered_at  DateTime?
+  cancelled_at  DateTime?
+  cancel_reason String?
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
 
   items    OrderItem[]
   timeline OrderTimeline[]
@@ -80,9 +93,9 @@ model OrderItem {
   order_id   String
   product_id String
   quantity   Int     @default(1)
-  price      Float   // السعر وقت الشراء — مش بيتغير لو المنتج اتغير
+  price      Float
   currency   String  @default("PI")
-  snapshot   Json?   // نسخة من بيانات المنتج وقت الشراء
+  snapshot   Json?
 
   order   Order   @relation(fields: [order_id],   references: [id], onDelete: Cascade)
   product Product @relation(fields: [product_id], references: [id])
@@ -92,7 +105,6 @@ model OrderItem {
   @@map("order_items")
 }
 
-// Audit trail لكل تغيير في حالة الـ Order
 model OrderTimeline {
   id         String   @id @default(uuid())
   order_id   String
@@ -105,4 +117,41 @@ model OrderTimeline {
 
   @@index([order_id])
   @@map("order_timeline")
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  user_id         String             @unique
+  plan            SubscriptionPlan   @default(FREE)
+  status          SubscriptionStatus @default(ACTIVE)
+  payment_id      String?
+  pi_payment_id   String?
+  current_period_start DateTime      @default(now())
+  current_period_end   DateTime?
+  cancelled_at    DateTime?
+  cancel_reason   String?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  history SubscriptionHistory[]
+
+  @@index([user_id])
+  @@index([plan])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model SubscriptionHistory {
+  id              String           @id @default(uuid())
+  subscription_id String
+  plan            SubscriptionPlan
+  status          SubscriptionStatus
+  payment_id      String?
+  note            String?
+  created_at      DateTime         @default(now())
+
+  subscription Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+
+  @@index([subscription_id])
+  @@map("subscription_history")
 }
