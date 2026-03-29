@@ -14,20 +14,20 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
-    "@sentry/node":   "^10.39.0",
-    "cors":           "^2.8.6",
-    "dotenv":         "^16.6.1",
-    "express":        "^4.22.1",
+    "@prisma/client":    "^5.22.0",
+    "@sentry/node":      "^10.39.0",
+    "cors":              "^2.8.6",
+    "dotenv":            "^16.6.1",
+    "express":           "^4.22.1",
     "express-validator": "^7.0.1",
-    "helmet":         "^7.2.0",
-    "ioredis":        "^5.9.3",
-    "jsonwebtoken":   "^9.0.3",
-    "pino":           "^10.3.1",
-    "pino-http":      "^11.0.0",
-    "prom-client":    "^15.1.3",
-    "uuid":           "^9.0.1",
-    "zod":            "^3.25.76"
+    "helmet":            "^7.2.0",
+    "ioredis":           "^5.9.3",
+    "jsonwebtoken":      "^9.0.3",
+    "pino":              "^10.3.1",
+    "pino-http":         "^11.0.0",
+    "prom-client":       "^15.1.3",
+    "uuid":              "^9.0.1",
+    "zod":               "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js":          "^9.0.0",
@@ -56,6 +56,7 @@
     "preset":          "ts-jest",
     "testEnvironment": "node",
     "testMatch":       ["**/__tests__/**/*.test.ts"],
+    "testPathIgnorePatterns": ["src/__tests__/"],
     "setupFiles":      ["./__tests__/setup.ts"],
     "testTimeout":     10000,
     "forceExit":       true,
@@ -67,7 +68,8 @@
       "!src/**/*.d.ts",
       "!src/config/**",
       "!src/infra/**",
-      "!src/index.ts"
+      "!src/index.ts",
+      "!src/__tests__/**"
     ],
     "coverageThreshold": {
       "global": {
