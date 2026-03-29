@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductModule } from './modules/product/product.module';
 import { OrderModule } from './modules/order/order.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { HealthModule } from './modules/health/health.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { HealthModule } from './modules/health/health.module';
     PrismaModule,
     ProductModule,
     OrderModule,
+    SubscriptionModule,
     HealthModule,
   ],
 })
