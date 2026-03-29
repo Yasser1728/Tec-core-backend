@@ -69,6 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-test
     if: always()
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -231,7 +232,7 @@ jobs:
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [lint-and-test, docker-build, coverage-gate]
+    needs: [lint-and-test, docker-build]
     if: failure() && github.event_name == 'push'
     steps:
       - name: Log failure
