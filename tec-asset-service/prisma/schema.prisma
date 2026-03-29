@@ -20,6 +20,13 @@ enum AssetStatus {
   ON_SALE
 }
 
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
+  EXPIRED
+}
+
 model Asset {
   id            String        @id @default(uuid())
   transactionId String        @unique
@@ -30,7 +37,9 @@ model Asset {
   metadata      Json
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  history       AssetHistory[]
+
+  history  AssetHistory[]
+  listings AssetListing[]
 
   @@index([ownerId])
 }
@@ -41,8 +50,34 @@ model AssetHistory {
   toOwnerId     String
   transactionId String
   createdAt     DateTime @default(now())
-  asset         Asset    @relation(fields: [assetId], references: [id])
+
+  asset Asset @relation(fields: [assetId], references: [id])
 
   @@index([assetId])
   @@index([toOwnerId])
+}
+
+model AssetListing {
+  id          String        @id @default(uuid())
+  assetId     String
+  sellerId    String
+  price       Float
+  currency    String        @default("PI")
+  status      ListingStatus @default(ACTIVE)
+  title       String?
+  description String?
+  paymentId   String?       @unique
+  buyerId     String?
+  soldAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@index([sellerId])
+  @@index([buyerId])
+  @@index([status])
+  @@index([assetId])
+  @@map("asset_listings")
 }
