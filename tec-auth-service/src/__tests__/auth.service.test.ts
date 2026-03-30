@@ -11,7 +11,7 @@ import {
 
 // ── Mock axios ────────────────────────────────────────────
 jest.mock('axios', () => ({
-  get: jest.fn(),
+  get:          jest.fn(),
   isAxiosError: jest.fn(),
 }));
 
@@ -30,10 +30,10 @@ import axios from 'axios';
 
 const mockPrisma = {
   user: {
-    findUnique:  jest.fn(),
-    findFirst:   jest.fn(),
-    create:      jest.fn(),
-    upsert:      jest.fn(),
+    findUnique: jest.fn(),
+    findFirst:  jest.fn(),
+    create:     jest.fn(),
+    upsert:     jest.fn(),
   },
 };
 
@@ -46,9 +46,9 @@ const mockJwt = {
 const mockConfig = {
   get: jest.fn().mockImplementation((key: string) => {
     const values: Record<string, string> = {
-      JWT_SECRET:          'test-secret',
-      JWT_REFRESH_SECRET:  'test-refresh-secret',
-      JWT_EXPIRES_IN:      '86400',
+      JWT_SECRET:             'test-secret',
+      JWT_REFRESH_SECRET:     'test-refresh-secret',
+      JWT_EXPIRES_IN:         '86400',
       JWT_REFRESH_EXPIRES_IN: '604800',
     };
     return values[key] ?? null;
@@ -56,14 +56,14 @@ const mockConfig = {
 };
 
 const baseUser = {
-  id:           'user-001',
-  pi_uid:       'pi-uid-001',
-  pi_username:  'testuser',
-  role:         'user',
-  email:        null,
+  id:            'user-001',
+  pi_uid:        'pi-uid-001',
+  pi_username:   'testuser',
+  role:          'user',
+  email:         null,
   password_hash: null,
-  kyc_status:   'pending',
-  created_at:   new Date(),
+  kyc_status:    'pending',
+  created_at:    new Date(),
 };
 
 let service: AuthService;
@@ -74,9 +74,9 @@ beforeEach(async () => {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AuthService,
-      { provide: PrismaService,  useValue: mockPrisma },
-      { provide: JwtService,     useValue: mockJwt    },
-      { provide: ConfigService,  useValue: mockConfig  },
+      { provide: PrismaService, useValue: mockPrisma },
+      { provide: JwtService,    useValue: mockJwt    },
+      { provide: ConfigService, useValue: mockConfig  },
     ],
   }).compile();
 
@@ -105,8 +105,12 @@ describe('AuthService — piLogin', () => {
     (axios.get as jest.Mock).mockResolvedValue({
       data: { uid: 'pi-uid-new', username: 'newuser' },
     });
-    mockPrisma.user.findUnique.mockResolvedValue(null); // مستخدم جديد
-    mockPrisma.user.upsert.mockResolvedValue({ ...baseUser, pi_uid: 'pi-uid-new', pi_username: 'newuser' });
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    mockPrisma.user.upsert.mockResolvedValue({
+      ...baseUser,
+      pi_uid:      'pi-uid-new',
+      pi_username: 'newuser',
+    });
 
     const result = await service.piLogin('valid-pi-token');
 
@@ -119,7 +123,8 @@ describe('AuthService — piLogin', () => {
   });
 
   it('throws UnauthorizedException for invalid Pi token', async () => {
-    (axios.isAxiosError as jest.Mock).mockReturnValue(true);
+    // ✅ Fix: cast عبر unknown أولاً
+    (axios.isAxiosError as unknown as jest.Mock).mockReturnValue(true);
     (axios.get as jest.Mock).mockRejectedValue({
       isAxiosError: true,
       response:     { status: 401 },
@@ -130,7 +135,8 @@ describe('AuthService — piLogin', () => {
 
   it('throws UnauthorizedException when Pi returns empty response', async () => {
     (axios.get as jest.Mock).mockResolvedValue({ data: {} });
-    (axios.isAxiosError as jest.Mock).mockReturnValue(false);
+    // ✅ Fix: cast عبر unknown أولاً
+    (axios.isAxiosError as unknown as jest.Mock).mockReturnValue(false);
 
     await expect(service.piLogin('bad-token')).rejects.toThrow(UnauthorizedException);
   });
@@ -244,17 +250,13 @@ describe('AuthService — validateToken', () => {
   });
 
   it('throws UnauthorizedException for expired token', async () => {
-    mockJwt.verify.mockImplementation(() => {
-      throw new Error('jwt expired');
-    });
+    mockJwt.verify.mockImplementation(() => { throw new Error('jwt expired'); });
 
     await expect(service.validateToken('expired-token')).rejects.toThrow(UnauthorizedException);
   });
 
   it('throws UnauthorizedException for malformed token', async () => {
-    mockJwt.verify.mockImplementation(() => {
-      throw new Error('invalid signature');
-    });
+    mockJwt.verify.mockImplementation(() => { throw new Error('invalid signature'); });
 
     await expect(service.validateToken('bad-token')).rejects.toThrow(UnauthorizedException);
   });
@@ -290,7 +292,11 @@ describe('AuthService — getMe', () => {
 describe('AuthService — refreshToken', () => {
 
   it('returns new access token for valid refresh token', async () => {
-    const payload = { sub: 'user-001', type: 'refresh', exp: Math.floor(Date.now() / 1000) + 3600 };
+    const payload = {
+      sub:  'user-001',
+      type: 'refresh',
+      exp:  Math.floor(Date.now() / 1000) + 3600,
+    };
     mockJwt.verify.mockReturnValue(payload);
     mockPrisma.user.findUnique.mockResolvedValue(baseUser);
 
@@ -312,15 +318,13 @@ describe('AuthService — refreshToken', () => {
   });
 
   it('throws UnauthorizedException for blacklisted token', async () => {
-    const payload = { sub: 'user-001', type: 'refresh', exp: Math.floor(Date.now() / 1000) + 3600 };
+    const payload = {
+      sub:  'user-001',
+      type: 'refresh',
+      exp:  Math.floor(Date.now() / 1000) + 3600,
+    };
     mockJwt.verify.mockReturnValue(payload);
 
-    // Mock Redis get — blacklisted
-    const Redis = require('ioredis');
-    const redisInstance = new Redis();
-    (redisInstance.get as jest.Mock).mockResolvedValue('1');
-
-    // Re-create service with blacklisted redis mock
     process.env.REDIS_URL = 'redis://localhost:6379';
     const module = await Test.createTestingModule({
       providers: [
@@ -332,6 +336,12 @@ describe('AuthService — refreshToken', () => {
     }).compile();
 
     const newService = module.get<AuthService>(AuthService);
+
+    // Override Redis get لإرجاع '1' (blacklisted)
+    const Redis = require('ioredis');
+    const instance = Redis.mock.results[Redis.mock.results.length - 1].value;
+    (instance.get as jest.Mock).mockResolvedValue('1');
+
     delete process.env.REDIS_URL;
 
     await expect(newService.refreshToken('blacklisted-token')).rejects.toThrow(UnauthorizedException);
