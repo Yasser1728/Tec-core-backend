@@ -1,25 +1,24 @@
-/**
- * Unit tests for Phase 3 wallet service additions:
- * - Rate limiting middleware
- * - Logger operation tracing
- * - Security headers
- */
 import request from 'supertest';
 import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import { createRateLimiter } from '../../src/middlewares/rateLimit.middleware';
+import {
+  createRateLimiter,
+  InMemoryStore,
+  setStore,
+} from '../../src/middlewares/rateLimit.middleware';
 import { logger, OperationPhase } from '../../src/utils/logger';
 
-// ─── Rate Limiter Tests ────────────────────────────────────────────────────────
-
+// ─── Rate Limiter Tests ───────────────────────────────────────
 describe('Rate Limiter Middleware', () => {
   let app: Application;
 
   beforeEach(() => {
+    // ✅ Fresh store لكل test — يمنع تراكم الـ requests
+    setStore(new InMemoryStore());
+
     app = express();
     app.use(express.json());
-    // Very tight limiter for testing: 2 requests per 60 s
     const limiter = createRateLimiter(2, 60000);
     app.post('/test', limiter, (_req, res) => {
       res.json({ success: true });
@@ -37,7 +36,6 @@ describe('Rate Limiter Middleware', () => {
   it('blocks requests that exceed the limit', async () => {
     await request(app).post('/test').send({ userId: 'userA' });
     await request(app).post('/test').send({ userId: 'userA' });
-    // Third request should be rate limited
     const res = await request(app).post('/test').send({ userId: 'userA' });
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe('RATE_LIMIT_EXCEEDED');
@@ -51,17 +49,14 @@ describe('Rate Limiter Middleware', () => {
   });
 
   it('does not rate-limit different users independently', async () => {
-    // Fill up user C's quota
     await request(app).post('/test').send({ userId: 'userC' });
     await request(app).post('/test').send({ userId: 'userC' });
-    // user D should still get through
     const res = await request(app).post('/test').send({ userId: 'userD' });
     expect(res.status).toBe(200);
   });
 });
 
-// ─── Logger Operation Trace Tests ─────────────────────────────────────────────
-
+// ─── Logger Operation Trace Tests ─────────────────────────────
 describe('Logger operation trace', () => {
   const phases: OperationPhase[] = ['init', 'verify', 'commit', 'rollback'];
 
@@ -90,8 +85,7 @@ describe('Logger operation trace', () => {
   });
 });
 
-// ─── Security Headers Tests ───────────────────────────────────────────────────
-
+// ─── Security Headers Tests ───────────────────────────────────
 describe('Security headers', () => {
   let app: Application;
 
@@ -102,12 +96,12 @@ describe('Security headers', () => {
         contentSecurityPolicy: {
           directives: {
             defaultSrc: ["'self'"],
-            frameSrc: ["'none'"],
-            objectSrc: ["'none'"],
+            frameSrc:   ["'none'"],
+            objectSrc:  ["'none'"],
           },
         },
         frameguard: { action: 'deny' },
-        noSniff: true,
+        noSniff:    true,
       })
     );
     app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -129,8 +123,7 @@ describe('Security headers', () => {
   });
 });
 
-// ─── CORS origin restriction tests ────────────────────────────────────────────
-
+// ─── CORS Tests ───────────────────────────────────────────────
 describe('CORS origin restriction', () => {
   it('allows whitelisted origins', async () => {
     const app = express();
