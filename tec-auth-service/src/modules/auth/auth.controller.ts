@@ -31,6 +31,30 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // ✅ Refresh Token Rotation
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(
+    @Headers('authorization') authHeader: string,
+  ): Promise<{ token: string }> {
+    if (!authHeader?.startsWith('Bearer '))
+      throw new UnauthorizedException('Missing refresh token');
+    const refreshToken = authHeader.split(' ')[1];
+    return this.authService.refreshToken(refreshToken);
+  }
+
+  // ✅ Logout — blacklist token
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(
+    @Headers('authorization') authHeader: string,
+  ): Promise<{ success: boolean }> {
+    if (!authHeader?.startsWith('Bearer '))
+      throw new UnauthorizedException('Missing token');
+    const token = authHeader.split(' ')[1];
+    return this.authService.logout(token);
+  }
+
   @Get('me')
   async getMe(@Headers('authorization') authHeader: string) {
     if (!authHeader?.startsWith('Bearer '))
