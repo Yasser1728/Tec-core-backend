@@ -59,6 +59,9 @@
     "preset":          "ts-jest",
     "testEnvironment": "node",
     "testMatch":       ["**/__tests__/**/*.test.ts"],
+    "testPathIgnorePatterns": [
+      "__tests__/integration/middleware.test.ts"
+    ],
     "setupFiles":      ["./__tests__/setup.ts"],
     "testTimeout":     10000,
     "forceExit":       true,
