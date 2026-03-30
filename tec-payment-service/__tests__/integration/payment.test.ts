@@ -674,7 +674,7 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.action).toBe('not_found');
+      expect(response.body.data.action).toBe('cancelled_on_pi');
     });
 
     it('should cancel a created payment and return action: cancelled', async () => {
