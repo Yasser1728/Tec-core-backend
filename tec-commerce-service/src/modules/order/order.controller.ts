@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  Headers, HttpCode, HttpStatus, BadRequestException,
+  HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
 import { OrdersService, CreateOrderDto, CheckoutDto } from './order.service';
 
@@ -10,9 +10,7 @@ export class OrdersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createOrder(
-    @Body() body: CreateOrderDto & { buyer_id: string },
-  ) {
+  async createOrder(@Body() body: CreateOrderDto & { buyer_id: string }) {
     if (!body.buyer_id) throw new BadRequestException('buyer_id required');
     const order = await this.ordersService.createOrder(body);
     return { success: true, data: { order } };
