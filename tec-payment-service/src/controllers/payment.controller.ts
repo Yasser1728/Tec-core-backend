@@ -875,10 +875,20 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
 
     const payment = await prisma.payment.findUnique({ where: { pi_payment_id } });
 
-    if (!payment) {
-      res.json({ success: true, data: { action: 'not_found' } });
-      return;
+ if (!payment) {
+  if (env.PI_SANDBOX !== 'true' && env.PI_API_KEY) {
+    try {
+      await piCancelPayment(pi_payment_id);
+      logInfo('Pi payment cancelled directly on Pi Network', { pi_payment_id });
+    } catch (piErr) {
+      logWarn('Pi direct cancel failed', { pi_payment_id, error: (piErr as Error).message });
     }
+  } else {
+    logInfo('Sandbox mode: skipping Pi direct cancel', { pi_payment_id });
+  }
+  res.json({ success: true, data: { action: 'cancelled_on_pi' } });
+  return;
+}   
 
     const TERMINAL_STATUSES = ['completed', 'cancelled', 'failed'];
     if (TERMINAL_STATUSES.includes(payment.status)) {
