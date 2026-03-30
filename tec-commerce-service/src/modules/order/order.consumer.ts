@@ -1,47 +1,47 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import Redis from 'ioredis';
+import { PrismaService } from '../../prisma/prisma.service';
 import { OrdersService } from './order.service';
+import Redis from 'ioredis';
 
 @Injectable()
 export class OrderConsumer implements OnModuleInit {
   private readonly logger = new Logger(OrderConsumer.name);
   private subscriber: Redis | null = null;
 
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly prisma:        PrismaService,
+  ) {}
 
   async onModuleInit() {
     if (!process.env.REDIS_URL) {
       this.logger.warn('REDIS_URL not set — Order Consumer disabled');
       return;
     }
-    await this.startConsuming();
+    this.startConsuming().catch(err =>
+      this.logger.error(`Consumer failed: ${(err as Error).message}`)
+    );
   }
 
   private async startConsuming() {
     this.subscriber = new Redis(process.env.REDIS_URL!, {
       maxRetriesPerRequest: null,
       retryStrategy: (times) => Math.min(times * 100, 3000),
-      lazyConnect: false,
     });
 
-    const STREAM    = 'payment.completed';
-    const GROUP     = 'commerce-service';
-    const CONSUMER  = 'commerce-consumer-1';
+    const STREAM   = 'payment.completed';
+    const GROUP    = 'commerce-service';
+    const CONSUMER = 'commerce-consumer-1';
 
-    // ── Create consumer group ──────────────────────────────
     try {
       await this.subscriber.xgroup('CREATE', STREAM, GROUP, '$', 'MKSTREAM');
-      this.logger.log(`Consumer group created: ${GROUP}`);
     } catch (err: any) {
       if (!err.message?.includes('BUSYGROUP')) throw err;
     }
 
     this.logger.log(`Order Consumer started — listening on ${STREAM}`);
-
-    // ── Process pending messages first ─────────────────────
     await this.processPending(STREAM, GROUP, CONSUMER);
 
-    // ── Main loop ──────────────────────────────────────────
     while (true) {
       try {
         const results = await this.subscriber.xreadgroup(
@@ -57,15 +57,14 @@ export class OrderConsumer implements OnModuleInit {
         for (const [, messages] of results) {
           for (const [messageId, fields] of messages) {
             try {
-              const dataIndex = fields.indexOf('data');
+              const dataIndex = (fields as string[]).indexOf('data');
               if (dataIndex === -1) continue;
-
-              const payload = JSON.parse(fields[dataIndex + 1]);
+              const payload = JSON.parse((fields as string[])[dataIndex + 1]);
               await this.handlePaymentCompleted(payload);
               await this.subscriber.xack(STREAM, GROUP, messageId);
               this.logger.log(`ACK: ${messageId}`);
             } catch (err) {
-              this.logger.error(`Handler failed for ${messageId}: ${(err as Error).message}`);
+              this.logger.error(`Handler failed: ${(err as Error).message}`);
             }
           }
         }
@@ -90,62 +89,47 @@ export class OrderConsumer implements OnModuleInit {
 
     if (!pending) return;
 
-    let count = 0;
     for (const [, messages] of pending) {
       for (const [messageId, fields] of messages) {
         try {
-          const dataIndex = fields.indexOf('data');
+          const dataIndex = (fields as string[]).indexOf('data');
           if (dataIndex === -1) continue;
-          const payload = JSON.parse(fields[dataIndex + 1]);
+          const payload = JSON.parse((fields as string[])[dataIndex + 1]);
           await this.handlePaymentCompleted(payload);
           await this.subscriber!.xack(stream, group, messageId);
-          count++;
         } catch (err) {
-          this.logger.error(`Pending failed ${messageId}: ${(err as Error).message}`);
+          this.logger.error(`Pending failed: ${(err as Error).message}`);
         }
       }
     }
-
-    if (count > 0) this.logger.log(`Processed ${count} pending messages`);
   }
 
   private async handlePaymentCompleted(payload: {
     paymentId:    string;
     userId:       string;
-    amount:       number;
-    currency:     string;
     piPaymentId?: string;
-    timestamp:    string;
   }) {
-    this.logger.log(`payment.completed received: ${payload.paymentId}`);
+    this.logger.log(`payment.completed: ${payload.paymentId}`);
 
-    // ── Find pending order for this payment ────────────────
-    const { PrismaClient } = await import('../../../prisma/client');
-    const prisma = new PrismaClient();
+    const order = await this.prisma.order.findFirst({
+      where: {
+        status:     'PENDING',
+        buyer_id:   payload.userId,
+        payment_id: payload.paymentId,
+      },
+    });
 
-    try {
-      const order = await prisma.order.findFirst({
-        where: {
-          status:     'PENDING',
-          buyer_id:   payload.userId,
-          payment_id: payload.paymentId,
-        },
-      });
-
-      if (!order) {
-        this.logger.warn(`No pending order for payment: ${payload.paymentId}`);
-        return;
-      }
-
-      await this.ordersService.checkout({
-        order_id:      order.id,
-        payment_id:    payload.paymentId,
-        pi_payment_id: payload.piPaymentId,
-      });
-
-      this.logger.log(`Order ${order.id} marked as PAID`);
-    } finally {
-      await prisma.$disconnect();
+    if (!order) {
+      this.logger.warn(`No pending order for payment: ${payload.paymentId}`);
+      return;
     }
+
+    await this.ordersService.checkout({
+      order_id:      order.id,
+      payment_id:    payload.paymentId,
+      pi_payment_id: payload.piPaymentId,
+    });
+
+    this.logger.log(`Order ${order.id} → PAID`);
   }
-}
+          }
