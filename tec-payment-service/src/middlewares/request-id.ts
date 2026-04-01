@@ -1,20 +1,22 @@
-/**
- * Request correlation middleware.
- *
- * Reads the incoming `x-request-id` header or generates a new UUID v4.
- * Sets `req.requestId`, `req.headers['x-request-id']`, and echoes the
- * value back as a response header for end-to-end correlation.
- */
-import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
+import { randomUUID }                      from 'crypto';
+import { requestContext }                  from '../infra/logger';
 
-export const requestIdMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-  const existing = req.headers['x-request-id'];
-  const id =
-    typeof existing === 'string' && existing.length > 0 ? existing : randomUUID();
+/**
+ * Middleware: injects X-Request-ID into AsyncLocalStorage
+ * so every log line in the request lifecycle includes requestId.
+ */
+export const requestIdMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void => {
+  const requestId =
+    (req.headers['x-request-id'] as string) ?? randomUUID();
 
-  req.headers['x-request-id'] = id;
-  req.requestId = id;
-  res.setHeader('x-request-id', id);
-  next();
+  // ── Echo requestId in response ────────────────────────
+  res.setHeader('x-request-id', requestId);
+
+  // ── Run rest of request inside context ────────────────
+  requestContext.run({ requestId }, () => next());
 };
