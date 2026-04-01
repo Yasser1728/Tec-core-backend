@@ -70,14 +70,21 @@
       "!src/**/*.d.ts",
       "!src/config/**",
       "!src/infra/**",
-      "!src/server.ts"
+      "!src/server.ts",
+      "!src/utils/logger.ts"
     ],
     "coverageThreshold": {
       "global": {
-        "branches":  50,
-        "functions": 60,
-        "lines":     60,
-        "statements": 60
+        "branches":   60,
+        "functions":  70,
+        "lines":      75,
+        "statements": 75
+      },
+      "perFile": {
+        "branches":   40,
+        "functions":  50,
+        "lines":      50,
+        "statements": 50
       }
     },
     "coverageReporters": ["text", "lcov", "json-summary"]
