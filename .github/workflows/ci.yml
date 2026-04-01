@@ -92,7 +92,6 @@ jobs:
 
       - name: Run coverage check
         working-directory: ${{ matrix.service }}
-        # ✅ thresholds من package.json — مش hardcoded
         run: npm test -- --forceExit --testTimeout=10000 --coverage
         timeout-minutes: 5
 
@@ -132,10 +131,10 @@ jobs:
       - name: Build Docker image (no push)
         uses: docker/build-push-action@v5
         with:
-          context: ${{ matrix.service }}
-          file:    ${{ matrix.service }}/Dockerfile
-          push:    false
-          tags:    ${{ matrix.image }}:${{ github.sha }}
+          context:    ${{ matrix.service }}
+          file:       ${{ matrix.service }}/Dockerfile
+          push:       false
+          tags:       ${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
