@@ -2,9 +2,9 @@ import { startOutboxWorker, stopOutboxWorker } from '../src/services/outbox.work
 
 jest.useFakeTimers();
 
-const mockFindMany    = jest.fn();
-const mockUpdate      = jest.fn();
-const mockXadd        = jest.fn();
+const mockFindMany = jest.fn();
+const mockUpdate   = jest.fn();
+const mockXadd     = jest.fn();
 
 jest.mock('../src/config/database', () => ({
   prisma: {
@@ -34,7 +34,8 @@ describe('OutboxWorker', () => {
   it('skips processing when no pending events', async () => {
     mockFindMany.mockResolvedValue([]);
     startOutboxWorker();
-    await jest.runAllTimersAsync();
+    // ✅ بدل runAllTimersAsync — نتقدم بوقت محدد فقط
+    await jest.advanceTimersByTimeAsync(5000);
     expect(mockXadd).not.toHaveBeenCalled();
   });
 
@@ -44,7 +45,7 @@ describe('OutboxWorker', () => {
     ]);
     (global as any).__redisPublisher = null;
     startOutboxWorker();
-    await jest.runAllTimersAsync();
+    await jest.advanceTimersByTimeAsync(5000);
     expect(mockXadd).not.toHaveBeenCalled();
   });
 
@@ -58,7 +59,7 @@ describe('OutboxWorker', () => {
     (global as any).__redisPublisher = { status: 'ready', xadd: mockXadd };
 
     startOutboxWorker();
-    await jest.runAllTimersAsync();
+    await jest.advanceTimersByTimeAsync(5000);
 
     expect(mockXadd).toHaveBeenCalledWith(
       'payment.completed',
@@ -85,7 +86,7 @@ describe('OutboxWorker', () => {
     (global as any).__redisPublisher = { status: 'ready', xadd: mockXadd };
 
     startOutboxWorker();
-    await jest.runAllTimersAsync();
+    await jest.advanceTimersByTimeAsync(5000);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -98,6 +99,6 @@ describe('OutboxWorker', () => {
   it('stops worker cleanly', () => {
     startOutboxWorker();
     stopOutboxWorker();
-    expect(true).toBe(true); // لو ما throw — النجاح
+    expect(true).toBe(true);
   });
 });
