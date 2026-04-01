@@ -42,3 +42,16 @@ model NotificationPreference {
 
   @@map("notification_preferences")
 }
+
+// ── FCM Device Tokens ─────────────────────────────────────
+model DeviceToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String   @unique
+  platform   String   @default("web") // web | ios | android
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([user_id])
+  @@map("device_tokens")
+}
