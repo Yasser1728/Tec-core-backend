@@ -1,64 +1,75 @@
 /**
  * Pino-based structured logger for the Payment Service.
- *
- * Replaces console-based JSON logging with a single Pino logger.
- * Redacts sensitive fields so they never appear in production logs.
- * Log level is driven by the LOG_LEVEL env var (default: info).
- * Debug level is automatically suppressed when NODE_ENV=production
- * and LOG_LEVEL is not explicitly set.
+ * Includes requestId propagation via AsyncLocalStorage.
  */
-import pino from 'pino';
+import pino                               from 'pino';
+import { AsyncLocalStorage }              from 'async_hooks';
 
-const isProd = (process.env.NODE_ENV ?? 'production') === 'production';
+// ── Request Context Store ─────────────────────────────────
+export interface RequestContext {
+  requestId?: string;
+  userId?:    string;
+  service?:   string;
+}
+
+export const requestContext = new AsyncLocalStorage<RequestContext>();
+
+const isProd    = (process.env.NODE_ENV ?? 'production') === 'production';
 const LOG_LEVEL = process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug');
 
 const pinoInstance = pino({
   level: LOG_LEVEL,
   redact: {
     paths: [
-      'password',
-      'token',
-      'secret',
-      'authorization',
+      'password', 'token', 'secret', 'authorization',
       'req.headers.authorization',
       'req.headers.cookie',
       'req.headers["x-auth-token"]',
-      '*.password',
-      '*.token',
-      '*.secret',
+      '*.password', '*.token', '*.secret',
     ],
     censor: '[REDACTED]',
   },
   formatters: {
-    level(label) {
-      return { level: label };
-    },
+    level(label) { return { level: label }; },
   },
   timestamp: pino.stdTimeFunctions.isoTime,
   base: { service: process.env.SERVICE_NAME ?? 'payment-service' },
 }, process.stdout);
 
-/**
- * Wrapped logger that keeps the existing call signature:
- *   logger.info(message, meta?)
- * so the rest of the codebase doesn't need to change.
- */
+// ── Helper: inject requestId from context ─────────────────
+const withContext = (meta?: Record<string, unknown>): Record<string, unknown> => {
+  const ctx = requestContext.getStore();
+  return {
+    ...(ctx?.requestId ? { requestId: ctx.requestId } : {}),
+    ...(ctx?.userId    ? { userId:    ctx.userId    } : {}),
+    ...meta,
+  };
+};
+
+// ── Wrapped logger ────────────────────────────────────────
 export const logger = {
-  error: (message: string, meta?: Record<string, unknown>) => {
-    if (meta) pinoInstance.error({ ...meta }, message);
-    else pinoInstance.error(message);
-  },
-  warn: (message: string, meta?: Record<string, unknown>) => {
-    if (meta) pinoInstance.warn({ ...meta }, message);
-    else pinoInstance.warn(message);
-  },
-  info: (message: string, meta?: Record<string, unknown>) => {
-    if (meta) pinoInstance.info({ ...meta }, message);
-    else pinoInstance.info(message);
-  },
-  debug: (message: string, meta?: Record<string, unknown>) => {
-    if (meta) pinoInstance.debug({ ...meta }, message);
-    else pinoInstance.debug(message);
+  error: (message: string, meta?: Record<string, unknown>) =>
+    pinoInstance.error(withContext(meta), message),
+
+  warn: (message: string, meta?: Record<string, unknown>) =>
+    pinoInstance.warn(withContext(meta), message),
+
+  info: (message: string, meta?: Record<string, unknown>) =>
+    pinoInstance.info(withContext(meta), message),
+
+  debug: (message: string, meta?: Record<string, unknown>) =>
+    pinoInstance.debug(withContext(meta), message),
+
+  // ── Operation trace (for saga/transfer phases) ──────────
+  operation: (
+    name:  string,
+    phase: 'init' | 'verify' | 'commit' | 'rollback',
+    meta?: Record<string, unknown>,
+  ) => {
+    const fn = phase === 'rollback' ? pinoInstance.error.bind(pinoInstance)
+             : phase === 'commit'   ? pinoInstance.info.bind(pinoInstance)
+             :                        pinoInstance.debug.bind(pinoInstance);
+    fn(withContext(meta), `[${name.toUpperCase()}] phase=${phase}`);
   },
 };
 
