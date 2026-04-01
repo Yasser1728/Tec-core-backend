@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import swaggerUi                        from 'swagger-ui-express';
 import swaggerJsdoc                     from 'swagger-jsdoc';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
+import { rateLimiter, authRateLimiter, paymentRateLimiter } from './middleware/rateLimiter';
 
 const SERVICE_VERSION  = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
