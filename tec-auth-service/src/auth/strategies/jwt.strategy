@@ -1,23 +1,29 @@
-// tec-auth-service/src/auth/strategies/jwt.strategy.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common'
-import { PassportStrategy } from '@nestjs/passport'
-import { ExtractJwt, Strategy } from 'passport-jwt'
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { PassportStrategy }                  from '@nestjs/passport';
+import { ExtractJwt, Strategy }              from 'passport-jwt';
+import { ConfigService }                     from '@nestjs/config';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(config: ConfigService) {
+    const publicKey  = config.get<string>('JWT_PUBLIC_KEY')?.replace(/\\n/g, '\n');
+    const secret     = config.get<string>('JWT_SECRET', 'tec-dev-secret');
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: process.env.JWT_SECRET,
-    })
+      // RS256 إذا في public key — HS256 fallback
+      ...(publicKey
+        ? { secretOrKey: publicKey,  algorithms: ['RS256'] }
+        : { secretOrKey: secret,     algorithms: ['HS256'] }),
+    });
   }
 
   async validate(payload: any) {
-    if (!payload.sub) throw new UnauthorizedException()
-    return { 
-      sub: payload.sub, 
-      piUid: payload.piUid,
-      username: payload.username 
-    }
+    if (!payload.sub) throw new UnauthorizedException();
+    return {
+      sub:      payload.sub,
+      piUid:    payload.pi_uid,
+      username: payload.pi_username,
+    };
   }
 }
