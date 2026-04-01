@@ -5,6 +5,7 @@ import { ProxyService }                 from './modules/proxy/proxy.service';
 import { Request, Response, NextFunction } from 'express';
 import swaggerUi                        from 'swagger-ui-express';
 import swaggerJsdoc                     from 'swagger-jsdoc';
+import { GlobalExceptionFilter } from './filters/global-exception.filter';
 
 const SERVICE_VERSION  = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
@@ -538,6 +539,8 @@ const swaggerSpec = swaggerJsdoc({
 async function bootstrap() {
   const app    = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
+  
+app.useGlobalFilters(new GlobalExceptionFilter());
 
   app.enableCors({
     origin:         process.env.CORS_ORIGIN?.split(',') || '*',
