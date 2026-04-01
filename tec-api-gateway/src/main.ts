@@ -583,7 +583,15 @@ app.useGlobalFilters(new GlobalExceptionFilter());
     res.setHeader('Content-Type', 'application/json');
     res.send(swaggerSpec);
   });
+  
+// ── Rate Limiting ─────────────────────────────────────
 
+  expressApp.use('/api/v1/auth',    authRateLimiter);
+  expressApp.use('/api/auth',       authRateLimiter);
+  expressApp.use('/api/v1/payment', paymentRateLimiter);
+  expressApp.use('/api/payment',    paymentRateLimiter);
+  expressApp.use(rateLimiter);
+  
   // ── Register proxy routes ─────────────────────────────
   const proxyService = app.get(ProxyService);
   proxyService.registerProxies(expressApp);
