@@ -2,15 +2,15 @@ import {
   Injectable, UnauthorizedException,
   ConflictException, BadRequestException, Logger,
 } from '@nestjs/common';
-import { JwtService }                   from '@nestjs/jwt';
-import { ConfigService }                from '@nestjs/config';
-import { PrismaService }                from '../../prisma/prisma.service';
-import { RegisterDto }                  from './dto/register.dto';
-import { LoginDto }                     from './dto/login.dto';
+import { JwtService }                            from '@nestjs/jwt';
+import { ConfigService }                         from '@nestjs/config';
+import { PrismaService }                         from '../../prisma/prisma.service';
+import { RegisterDto }                           from './dto/register.dto';
+import { LoginDto }                              from './dto/login.dto';
 import { AuthResponse, TokenPayload, PiUserDTO } from './auth.types';
-import * as bcrypt                      from 'bcrypt';
-import axios                            from 'axios';
-import Redis                            from 'ioredis';
+import * as bcrypt                               from 'bcrypt';
+import axios                                     from 'axios';
+import Redis                                     from 'ioredis';
 
 @Injectable()
 export class AuthService {
@@ -106,10 +106,10 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email:       dto.email       ?? null,
+        email:        dto.email       ?? null,
         password_hash,
-        pi_uid:      dto.pi_uid      ?? null,
-        pi_username: dto.pi_username ?? null,
+        pi_uid:       dto.pi_uid      ?? null,
+        pi_username:  dto.pi_username ?? null,
       },
     });
 
@@ -138,15 +138,7 @@ export class AuthService {
   // ── Validate Token ────────────────────────────────────────
   async validateToken(token: string): Promise<TokenPayload> {
     try {
-      const publicKey = this.configService
-        .get<string>('JWT_PUBLIC_KEY')?.replace(/\\n/g, '\n');
-      const secret    = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
-
-      return this.jwtService.verify<TokenPayload>(token, {
-        ...(publicKey
-          ? { publicKey,  algorithms: ['RS256'] as any }
-          : { secret,     algorithms: ['HS256'] as any }),
-      });
+      return this.jwtService.verify<TokenPayload>(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
@@ -169,10 +161,8 @@ export class AuthService {
   async refreshToken(refreshToken: string): Promise<{ token: string }> {
     const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
-    const privateKey       = this.configService
-      .get<string>('JWT_PRIVATE_KEY')?.replace(/\\n/g, '\n');
 
-    // 1. Verify refresh token (always HS256)
+    // 1. Verify refresh token — always HS256
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshToken, { secret: jwtRefreshSecret });
@@ -202,18 +192,12 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User not found');
 
-    // 5. Generate new access token — RS256 if private key available
-    const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') ?? 86400;
-
-    const newAccessToken = privateKey
-      ? this.jwtService.sign(
-          { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
-          { privateKey, algorithm: 'RS256', expiresIn } as any,
-        )
-      : this.jwtService.sign(
-          { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
-          { secret: jwtSecret, expiresIn },
-        );
+    // 5. New access token — algorithm من الـ module config
+    const expiresIn      = this.configService.get<string>('JWT_EXPIRES_IN') ?? 86400;
+    const newAccessToken = this.jwtService.sign(
+      { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
+      { expiresIn },
+    );
 
     this.logger.log(`Token refreshed for user: ${user.id}`);
     return { token: newAccessToken };
@@ -237,8 +221,6 @@ export class AuthService {
 
   // ── Build Auth Response ───────────────────────────────────
   private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
-    const privateKey       = this.configService
-      .get<string>('JWT_PRIVATE_KEY')?.replace(/\\n/g, '\n');
     const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
 
@@ -257,19 +239,10 @@ export class AuthService {
       pi_username: user.pi_username ?? undefined,
     };
 
-    // ── Access Token — RS256 if private key, else HS256 ──────
-    const accessToken = privateKey
-      ? this.jwtService.sign(payload, {
-          privateKey,
-          algorithm:  'RS256',
-          expiresIn,
-        } as any)
-      : this.jwtService.sign(payload, {
-          secret: jwtSecret,
-          expiresIn,
-        });
+    // ── Access Token — algorithm بيتحدد من الـ module config ──
+    const accessToken = this.jwtService.sign(payload, { expiresIn });
 
-    // ── Refresh Token — always HS256 (server-side only) ──────
+    // ── Refresh Token — always HS256 ──────────────────────────
     const refreshToken = this.jwtService.sign(
       { sub: user.id, type: 'refresh' },
       { secret: jwtRefreshSecret, expiresIn: refreshExpiresIn },
@@ -288,5 +261,4 @@ export class AuthService {
       },
       tokens: { accessToken, refreshToken },
     };
-  }
   }
