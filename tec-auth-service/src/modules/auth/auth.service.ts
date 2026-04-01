@@ -2,15 +2,15 @@ import {
   Injectable, UnauthorizedException,
   ConflictException, BadRequestException, Logger,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../prisma/prisma.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
+import { JwtService }                   from '@nestjs/jwt';
+import { ConfigService }                from '@nestjs/config';
+import { PrismaService }                from '../../prisma/prisma.service';
+import { RegisterDto }                  from './dto/register.dto';
+import { LoginDto }                     from './dto/login.dto';
 import { AuthResponse, TokenPayload, PiUserDTO } from './auth.types';
-import * as bcrypt from 'bcrypt';
-import axios from 'axios';
-import Redis from 'ioredis';
+import * as bcrypt                      from 'bcrypt';
+import axios                            from 'axios';
+import Redis                            from 'ioredis';
 
 @Injectable()
 export class AuthService {
@@ -20,16 +20,16 @@ export class AuthService {
   private readonly redis: Redis | null = null;
 
   constructor(
-    private readonly prisma:         PrismaService,
-    private readonly jwtService:     JwtService,
-    private readonly configService:  ConfigService,
+    private readonly prisma:        PrismaService,
+    private readonly jwtService:    JwtService,
+    private readonly configService: ConfigService,
   ) {
     if (process.env.REDIS_URL) {
       this.redis = new Redis(process.env.REDIS_URL, {
         maxRetriesPerRequest: 3,
-        retryStrategy: (times) => Math.min(times * 100, 3000),
-        enableOfflineQueue: true,
-        lazyConnect: false,
+        retryStrategy:        (times) => Math.min(times * 100, 3000),
+        enableOfflineQueue:   true,
+        lazyConnect:          false,
       });
       this.redis.on('connect', () => this.logger.log('✅ Redis connected (auth-service)'));
       this.redis.on('error',   (err) => this.logger.warn(`⚠️ Redis error: ${err.message}`));
@@ -138,7 +138,15 @@ export class AuthService {
   // ── Validate Token ────────────────────────────────────────
   async validateToken(token: string): Promise<TokenPayload> {
     try {
-      return this.jwtService.verify<TokenPayload>(token);
+      const publicKey = this.configService
+        .get<string>('JWT_PUBLIC_KEY')?.replace(/\\n/g, '\n');
+      const secret    = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
+
+      return this.jwtService.verify<TokenPayload>(token, {
+        ...(publicKey
+          ? { publicKey,  algorithms: ['RS256'] as any }
+          : { secret,     algorithms: ['HS256'] as any }),
+      });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
@@ -148,7 +156,10 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where:  { id: userId },
-      select: { id: true, pi_uid: true, pi_username: true, kyc_status: true, role: true, created_at: true },
+      select: {
+        id: true, pi_uid: true, pi_username: true,
+        kyc_status: true, role: true, created_at: true,
+      },
     });
     if (!user) throw new UnauthorizedException('User not found');
     return user;
@@ -156,10 +167,12 @@ export class AuthService {
 
   // ── Refresh Token Rotation ────────────────────────────────
   async refreshToken(refreshToken: string): Promise<{ token: string }> {
-    const jwtSecret = this.configService.get<string>('JWT_SECRET', 'default-secret')!;
+    const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
+    const privateKey       = this.configService
+      .get<string>('JWT_PRIVATE_KEY')?.replace(/\\n/g, '\n');
 
-    // 1. Verify refresh token
+    // 1. Verify refresh token (always HS256)
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshToken, { secret: jwtRefreshSecret });
@@ -189,12 +202,18 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User not found');
 
-    // 5. Generate new access token
+    // 5. Generate new access token — RS256 if private key available
     const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') ?? 86400;
-    const newAccessToken = this.jwtService.sign(
-      { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
-      { secret: jwtSecret, expiresIn },
-    );
+
+    const newAccessToken = privateKey
+      ? this.jwtService.sign(
+          { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
+          { privateKey, algorithm: 'RS256', expiresIn } as any,
+        )
+      : this.jwtService.sign(
+          { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
+          { secret: jwtSecret, expiresIn },
+        );
 
     this.logger.log(`Token refreshed for user: ${user.id}`);
     return { token: newAccessToken };
@@ -218,7 +237,9 @@ export class AuthService {
 
   // ── Build Auth Response ───────────────────────────────────
   private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
-    const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'default-secret')!;
+    const privateKey       = this.configService
+      .get<string>('JWT_PRIVATE_KEY')?.replace(/\\n/g, '\n');
+    const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
 
     const parseExpiry = (value: string | undefined, fallback: number): string | number => {
@@ -236,11 +257,19 @@ export class AuthService {
       pi_username: user.pi_username ?? undefined,
     };
 
-    const accessToken = this.jwtService.sign(payload, {
-      secret: jwtSecret,
-      expiresIn,
-    });
+    // ── Access Token — RS256 if private key, else HS256 ──────
+    const accessToken = privateKey
+      ? this.jwtService.sign(payload, {
+          privateKey,
+          algorithm:  'RS256',
+          expiresIn,
+        } as any)
+      : this.jwtService.sign(payload, {
+          secret: jwtSecret,
+          expiresIn,
+        });
 
+    // ── Refresh Token — always HS256 (server-side only) ──────
     const refreshToken = this.jwtService.sign(
       { sub: user.id, type: 'refresh' },
       { secret: jwtRefreshSecret, expiresIn: refreshExpiresIn },
@@ -260,4 +289,4 @@ export class AuthService {
       tokens: { accessToken, refreshToken },
     };
   }
-}
+  }
