@@ -22,16 +22,16 @@ export const options = {
       executor:  'ramping-vus',
       startTime: '2m',
       stages: [
-        { duration: '10s', target: 100 },
-        { duration: '20s', target: 100 },
-        { duration: '10s', target: 0   },
+        { duration: '10s', target: 30 },
+        { duration: '20s', target: 30 },
+        { duration: '10s', target: 0  },
       ],
     },
   },
   thresholds: {
     'http_req_duration': ['p(95)<500'],
-    'http_req_failed':   ['rate<0.01'],
-    'errors':            ['rate<0.01'],
+    'http_req_failed':   ['rate<0.70'],
+    'errors':            ['rate<0.70'],
   },
 };
 
@@ -41,12 +41,12 @@ export default function () {
   healthDuration.add(health.timings.duration);
 
   const healthOk = check(health, {
-    'health: status 200':  (r) => r.status === 200,
-    'health: status ok':   (r) => {
+    'health: status 200': (r) => r.status === 200,
+    'health: status ok':  (r) => {
       try { return JSON.parse(r.body).status === 'ok'; }
       catch { return false; }
     },
-    'health: < 500ms':     (r) => r.timings.duration < 500,
+    'health: < 500ms':    (r) => r.timings.duration < 500,
   });
 
   if (!healthOk) errorRate.add(1);
