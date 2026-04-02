@@ -1,8 +1,5 @@
 /**
  * Unit tests for tec-payment-service Pi Network service functions.
- *
- * All calls to the Pi Network API are intercepted via a `global.fetch` mock so
- * that no real HTTP requests are made during testing.
  */
 import { piApprovePayment, piCompletePayment, PiApiError } from '../../src/services/payment.service';
 
@@ -43,7 +40,7 @@ const mockFetchAbort = (): void => {
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.PI_API_KEY = 'test-pi-api-key';
-  process.env.PI_APP_ID = 'test-pi-app-id';
+  process.env.PI_APP_ID  = 'test-pi-app-id';
   process.env.PI_SANDBOX = 'true';
   delete process.env.PI_API_APPROVE_TIMEOUT;
   delete process.env.PI_API_COMPLETE_TIMEOUT;
@@ -79,41 +76,45 @@ describe('piApprovePayment', () => {
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).resolves.toBeUndefined();
   });
 
-  it('throws PiApiError with PI_API_ERROR on non-200 HTTP response', async () => {
+  // ✅ updated: 400 → PI_APPROVE_FAILED + 502
+  it('throws PiApiError with PI_APPROVE_FAILED on non-200 HTTP response', async () => {
     mockFetchError(400, 'bad request');
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_API_ERROR',
-      httpStatus: 400,
+      name:       'PiApiError',
+      code:       'PI_APPROVE_FAILED',
+      httpStatus: 502,
     });
   });
 
+  // ✅ updated: PI_RETRY_EXCEEDED → PI_APPROVE_FAILED
   it('throws PiApiError with PI_APPROVE_FAILED on 500 response', async () => {
     mockFetchError(500, 'internal error');
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      code: 'PI_APPROVE_FAILED',
+      code:       'PI_APPROVE_FAILED',
       httpStatus: 502,
     });
   });
 
-  it('throws PiApiError with PI_APPROVE_FAILED on AbortError', async () => {
+  // ✅ updated: PI_RETRY_EXCEEDED → PI_TIMEOUT + 504
+  it('throws PiApiError with PI_TIMEOUT on AbortError', async () => {
     mockFetchAbort();
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_APPROVE_FAILED',
-      httpStatus: 502,
+      name:       'PiApiError',
+      code:       'PI_TIMEOUT',
+      httpStatus: 504,
     });
   });
 
-  it('throws PiApiError with PI_APPROVE_FAILED on network failure', async () => {
+  // ✅ updated: PI_RETRY_EXCEEDED → PI_NETWORK_ERROR
+  it('throws PiApiError with PI_NETWORK_ERROR on network failure', async () => {
     mockFetchNetworkError('ECONNREFUSED');
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_APPROVE_FAILED',
+      name:       'PiApiError',
+      code:       'PI_NETWORK_ERROR',
       httpStatus: 502,
     });
   });
@@ -122,8 +123,8 @@ describe('piApprovePayment', () => {
     delete process.env.PI_API_KEY;
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_CONFIG_ERROR',
+      name:       'PiApiError',
+      code:       'PI_CONFIG_ERROR',
       httpStatus: 500,
     });
     expect(global.fetch).not.toHaveBeenCalled();
@@ -180,32 +181,35 @@ describe('piCompletePayment', () => {
     expect(JSON.parse(opts.body as string)).toEqual({ txid: '' });
   });
 
-  it('throws PiApiError with PI_API_ERROR on non-200 HTTP response', async () => {
+  // ✅ updated: PI_API_ERROR + 422 → PI_COMPLETE_FAILED + 502
+  it('throws PiApiError with PI_COMPLETE_FAILED on non-200 HTTP response', async () => {
     mockFetchError(422, 'unprocessable');
 
     await expect(piCompletePayment(TEST_PI_PAYMENT_ID, TEST_TX_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_API_ERROR',
-      httpStatus: 422,
-    });
-  });
-
-  it('throws PiApiError with PI_RETRY_EXCEEDED on AbortError', async () => {
-    mockFetchAbort();
-
-    await expect(piCompletePayment(TEST_PI_PAYMENT_ID, TEST_TX_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_RETRY_EXCEEDED',
+      name:       'PiApiError',
+      code:       'PI_COMPLETE_FAILED',
       httpStatus: 502,
     });
   });
 
-  it('throws PiApiError with PI_RETRY_EXCEEDED on network failure', async () => {
+  // ✅ updated: PI_RETRY_EXCEEDED → PI_TIMEOUT + 504
+  it('throws PiApiError with PI_TIMEOUT on AbortError', async () => {
+    mockFetchAbort();
+
+    await expect(piCompletePayment(TEST_PI_PAYMENT_ID, TEST_TX_ID)).rejects.toMatchObject({
+      name:       'PiApiError',
+      code:       'PI_TIMEOUT',
+      httpStatus: 504,
+    });
+  });
+
+  // ✅ updated: PI_RETRY_EXCEEDED → PI_NETWORK_ERROR
+  it('throws PiApiError with PI_NETWORK_ERROR on network failure', async () => {
     mockFetchNetworkError('ETIMEDOUT');
 
     await expect(piCompletePayment(TEST_PI_PAYMENT_ID, TEST_TX_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_RETRY_EXCEEDED',
+      name:       'PiApiError',
+      code:       'PI_NETWORK_ERROR',
       httpStatus: 502,
     });
   });
@@ -214,8 +218,8 @@ describe('piCompletePayment', () => {
     delete process.env.PI_API_KEY;
 
     await expect(piCompletePayment(TEST_PI_PAYMENT_ID, TEST_TX_ID)).rejects.toMatchObject({
-      name: 'PiApiError',
-      code: 'PI_CONFIG_ERROR',
+      name:       'PiApiError',
+      code:       'PI_CONFIG_ERROR',
       httpStatus: 500,
     });
     expect(global.fetch).not.toHaveBeenCalled();
