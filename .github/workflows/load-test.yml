@@ -1,11 +1,11 @@
 name: Load Test
 
 on:
-  workflow_dispatch:  # تشغيل يدوي من GitHub
+  workflow_dispatch:
 
 jobs:
   k6-load-test:
-    name: k6 Payment Load Test
+    name: k6 Gateway Load Test
     runs-on: ubuntu-latest
 
     steps:
@@ -28,4 +28,4 @@ jobs:
         run: |
           k6 run \
             --env BASE_URL=https://api-gateway-production-6a68.up.railway.app \
-            tec-core-backend/k6/payment-load-test.js
+            tec-core-backend/k6/gateway-load-test.js
