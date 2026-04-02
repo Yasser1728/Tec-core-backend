@@ -13,11 +13,31 @@ describe('validateInternalKey', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('passes through when INTERNAL_SECRET is not configured', () => {
+  it('passes through when INTERNAL_SECRET is not configured (non-production)', () => {
     delete process.env.INTERNAL_SECRET;
-    const req = { headers: {} } as Request;
-    validateInternalKey(req, mockRes(), next);
-    expect(next).toHaveBeenCalled();
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      const req = { headers: {} } as Request;
+      validateInternalKey(req, mockRes(), next);
+      expect(next).toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  it('throws when INTERNAL_SECRET is not configured in production', () => {
+    delete process.env.INTERNAL_SECRET;
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const req = { headers: {} } as Request;
+      expect(() => validateInternalKey(req, mockRes(), next)).toThrow(
+        'INTERNAL_SECRET must be configured in production',
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
   });
 
   it('returns 403 when x-internal-key header is missing', () => {

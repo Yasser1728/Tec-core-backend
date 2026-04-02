@@ -8,14 +8,17 @@ import { Request, Response, NextFunction } from 'express';
  *
  * Uses a constant-time comparison to avoid timing-based attacks.
  *
- * When `INTERNAL_SECRET` is not configured (e.g. local development without
- * the variable set) the middleware passes through — this preserves local-dev
- * ergonomics while enforcing the check whenever a secret is actually
- * configured.
+ * When `INTERNAL_SECRET` is not configured the middleware throws a hard error
+ * in production to prevent accidental exposure of internal endpoints.  In
+ * non-production environments it passes through to preserve local-dev
+ * ergonomics.
  */
 export const validateInternalKey = (req: Request, res: Response, next: NextFunction): void => {
   const secret = process.env.INTERNAL_SECRET;
   if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('INTERNAL_SECRET must be configured in production');
+    }
     // No secret configured — skip enforcement (safe for local dev).
     next();
     return;
