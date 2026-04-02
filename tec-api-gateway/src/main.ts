@@ -538,13 +538,19 @@ const swaggerSpec = swaggerJsdoc({
 });
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    process.exit(1);
+  }
+
   const app    = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
   
 app.useGlobalFilters(new GlobalExceptionFilter());
 
+  const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map(s => s.trim()).filter(Boolean);
   app.enableCors({
-    origin:         process.env.CORS_ORIGIN?.split(',') || '*',
+    origin:         allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
     credentials:    true,
     methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-internal-key', 'x-request-id'],

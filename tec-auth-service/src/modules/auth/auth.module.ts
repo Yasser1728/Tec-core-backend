@@ -10,7 +10,7 @@ import { AuthController }              from './auth.controller';
       imports:    [ConfigModule],
       inject:     [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret:      config.get<string>('JWT_SECRET', 'tec-dev-secret'),
+        secret:      config.getOrThrow<string>('JWT_SECRET'),
         signOptions: { algorithm: 'HS256', expiresIn: '24h' },
       }),
     }),

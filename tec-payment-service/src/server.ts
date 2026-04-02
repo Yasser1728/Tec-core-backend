@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+  console.error('FATAL: INTERNAL_SECRET must be configured in production');
+  process.exit(1);
+}
+
 async function main() {
   const { logInfo, logError } = await import('./utils/logger');
   try {

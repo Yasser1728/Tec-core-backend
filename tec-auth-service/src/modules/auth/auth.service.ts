@@ -159,10 +159,8 @@ export class AuthService {
 
   // ── Refresh Token Rotation ────────────────────────────────
   async refreshToken(refreshToken: string): Promise<{ token: string }> {
-    const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
+    const jwtSecret        = this.configService.getOrThrow<string>('JWT_SECRET');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
-
-    // 1. Verify refresh token — always HS256
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshToken, { secret: jwtRefreshSecret });
@@ -221,7 +219,7 @@ export class AuthService {
 
   // ── Build Auth Response ───────────────────────────────────
   private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
-    const jwtSecret        = this.configService.get<string>('JWT_SECRET', 'tec-dev-secret')!;
+    const jwtSecret        = this.configService.getOrThrow<string>('JWT_SECRET');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
 
     const parseExpiry = (value: string | undefined, fallback: number): string | number => {

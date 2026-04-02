@@ -4,6 +4,11 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
 
   app.use(helmet());
