@@ -73,8 +73,8 @@ jest.mock('../../src/utils/audit', () => ({
 // ── JWT mock — sets req.user + req.userId ─────────────────
 jest.mock('../../src/middlewares/jwt.middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
-    req.user   = { id: 'user-test-123', role: 'user' };
-    req.userId = 'user-test-123';
+    req.user   = { id: '123e4567-e89b-12d3-a456-426614174000', role: 'user' };
+    req.userId = '123e4567-e89b-12d3-a456-426614174000';
     next();
   },
 }));
@@ -83,7 +83,7 @@ import app from '../../src/app';
 
 // ── Helpers ───────────────────────────────────────────────
 const INTERNAL_SECRET = 'test-internal-secret';
-const USER_ID         = 'user-test-123';
+const USER_ID         = '123e4567-e89b-12d3-a456-426614174000';
 
 const makePayment = (overrides = {}) => ({
   id:             uuid(),

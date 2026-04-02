@@ -47,8 +47,9 @@ describe('Pi Service', () => {
     (fetch as jest.Mock).mockRejectedValue(new Error('Network'));
 
     const promise = piApprovePayment('fail');
+    const assertion = expect(promise).rejects.toThrow(PiApiError);
     await jest.runAllTimersAsync();
-    await expect(promise).rejects.toThrow(PiApiError);
+    await assertion;
   });
 
   it('does not retry on 4xx error', async () => {
@@ -97,8 +98,9 @@ describe('Pi Service', () => {
 
     for (let i = 0; i < 5; i++) {
       const promise = piApprovePayment('fail');
+      const assertion = expect(promise).rejects.toThrow(PiApiError);
       await jest.runAllTimersAsync();
-      await expect(promise).rejects.toThrow(PiApiError);
+      await assertion;
     }
 
     // Next call should be blocked by circuit breaker
