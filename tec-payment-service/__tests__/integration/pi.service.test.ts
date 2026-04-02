@@ -89,31 +89,31 @@ describe('piApprovePayment', () => {
     });
   });
 
-  it('throws PiApiError with PI_RETRY_EXCEEDED on 500 response', async () => {
+  it('throws PiApiError with PI_APPROVE_FAILED on 500 response', async () => {
     mockFetchError(500, 'internal error');
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
-      code: 'PI_RETRY_EXCEEDED',
+      code: 'PI_APPROVE_FAILED',
       httpStatus: 502,
     });
   });
 
-  it('throws PiApiError with PI_RETRY_EXCEEDED on AbortError', async () => {
+  it('throws PiApiError with PI_APPROVE_FAILED on AbortError', async () => {
     mockFetchAbort();
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
       name: 'PiApiError',
-      code: 'PI_RETRY_EXCEEDED',
+      code: 'PI_APPROVE_FAILED',
       httpStatus: 502,
     });
   });
 
-  it('throws PiApiError with PI_RETRY_EXCEEDED on network failure', async () => {
+  it('throws PiApiError with PI_APPROVE_FAILED on network failure', async () => {
     mockFetchNetworkError('ECONNREFUSED');
 
     await expect(piApprovePayment(TEST_PI_PAYMENT_ID)).rejects.toMatchObject({
       name: 'PiApiError',
-      code: 'PI_RETRY_EXCEEDED',
+      code: 'PI_APPROVE_FAILED',
       httpStatus: 502,
     });
   });
