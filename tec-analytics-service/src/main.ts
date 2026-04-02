@@ -10,6 +10,11 @@ import { startAnalyticsConsumers } from './modules/analytics/analytics.consumer'
 import * as Sentry from '@sentry/node';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    process.exit(1);
+  }
+
   if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
@@ -25,8 +30,9 @@ async function bootstrap() {
     new FastifyAdapter({ logger: false }),
   );
 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean);
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? '*',
+    origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
     credentials: true,
   });
 

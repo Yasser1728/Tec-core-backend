@@ -6,6 +6,11 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from '@fastify/helmet';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    process.exit(1);
+  }
+
   const logger = new Logger('Bootstrap');
 
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -16,9 +21,9 @@ async function bootstrap() {
     })
   );
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || '*';
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean);
   app.enableCors({
-    origin:         allowedOrigins,
+    origin:         allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
     methods:        'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials:    true,
     allowedHeaders: 'Content-Type, Accept, Authorization, X-Internal-Key',

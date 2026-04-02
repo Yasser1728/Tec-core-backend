@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
+  console.error('FATAL: INTERNAL_SECRET must be configured in production');
+  process.exit(1);
+}
+
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

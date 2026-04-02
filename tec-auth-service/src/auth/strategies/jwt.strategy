@@ -7,7 +7,7 @@ import { ConfigService }                     from '@nestjs/config';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
     const publicKey  = config.get<string>('JWT_PUBLIC_KEY')?.replace(/\\n/g, '\n');
-    const secret     = config.get<string>('JWT_SECRET', 'tec-dev-secret');
+    const secret     = config.getOrThrow<string>('JWT_SECRET');
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
