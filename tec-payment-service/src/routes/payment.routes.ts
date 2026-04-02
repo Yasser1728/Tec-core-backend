@@ -54,10 +54,11 @@ router.post(
   idempotency,
   [
     body('userId')
+      .trim()
       .notEmpty()
       .withMessage('userId is required')
-      .isUUID()
-      .withMessage('userId must be a valid UUID'),
+      .isString()
+      .withMessage('userId must be a string'),
 
     body('amount')
       .notEmpty()

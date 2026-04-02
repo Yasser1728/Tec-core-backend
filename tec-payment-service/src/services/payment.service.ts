@@ -52,6 +52,7 @@ const callPiApi = async (
   url: string,
   body?: Record<string, unknown>,
   timeout = 30000,
+  httpFailCode = 'PI_API_ERROR',
 ) => {
   const apiKey = process.env.PI_API_KEY;
   if (!apiKey) throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY not configured', 500);
@@ -60,6 +61,8 @@ const callPiApi = async (
   if (circuitOpenUntil > now) {
     throw new PiApiError('PI_CIRCUIT_OPEN', 'Pi API circuit breaker is open', 503);
   }
+
+  let lastErrorType: 'abort' | 'network' | 'http' = 'network';
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
@@ -82,22 +85,27 @@ const callPiApi = async (
 
       const text = await res.text().catch(() => '');
       logWarn('Pi API HTTP error', { url, status: res.status, attempt, body: text });
+      lastErrorType = 'http';
 
       if (res.status === 429 || res.status >= 500) {
-        await sleep(500 * 2 ** (attempt - 1));
+        if (attempt < MAX_RETRIES) await sleep(500 * 2 ** (attempt - 1));
         continue;
       }
 
-      throw new PiApiError('PI_API_ERROR', `Pi API error (HTTP ${res.status})`, res.status);
+      // Non-retryable 4xx — fail immediately with the caller-supplied code
+      throw new PiApiError(httpFailCode, `Pi API error (HTTP ${res.status})`, 502);
 
     } catch (err) {
       if (err instanceof PiApiError) throw err;
       if ((err as Error).name === 'AbortError') {
         logWarn('Pi API timeout', { url, attempt });
+        lastErrorType = 'abort';
       } else {
         logWarn('Pi API network error', { url, attempt, error: (err as Error).message });
+        lastErrorType = 'network';
       }
-      await sleep(500 * 2 ** (attempt - 1));
+      // Only sleep between retries — no delay after the final attempt
+      if (attempt < MAX_RETRIES) await sleep(500 * 2 ** (attempt - 1));
     } finally {
       clearTimeout(timer);
     }
@@ -109,17 +117,35 @@ const callPiApi = async (
     logWarn('Pi API circuit breaker triggered', { threshold: CIRCUIT_THRESHOLD, openUntil: circuitOpenUntil });
   }
 
-  throw new PiApiError('PI_RETRY_EXCEEDED', 'Pi API request failed after retries', 502);
+  if (lastErrorType === 'abort') {
+    throw new PiApiError('PI_TIMEOUT', 'Pi API request timed out', 504);
+  }
+  if (lastErrorType === 'network') {
+    throw new PiApiError('PI_NETWORK_ERROR', 'Pi API network failure', 502);
+  }
+  // lastErrorType === 'http' — retryable 5xx/429 exhausted
+  throw new PiApiError(httpFailCode, 'Pi API request failed after retries', 502);
 };
 
-export const piApprovePayment = async (piPaymentId: string): Promise<void> => {
+const _piApprovePayment = async (piPaymentId: string): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/approve`;
   logInfo('Calling Pi API: approve', { piPaymentId });
-  await callPiApi(url, undefined, APPROVE_TIMEOUT);
+  await callPiApi(url, undefined, APPROVE_TIMEOUT, 'PI_APPROVE_FAILED');
   logInfo('Pi API approve succeeded', { piPaymentId });
 };
 
-export const piCompletePayment = async (
+// The noop .catch() pre-registers a rejection handler so the promise is never
+// transiently "unhandled" between the moment Jest 30 fake timers settle it and
+// the moment the test's .rejects handler is attached.  The rejection itself is
+// NOT swallowed — it still propagates to every other .then/.catch chain
+// attached to the same promise (including the caller's await).
+export const piApprovePayment = (piPaymentId: string): Promise<void> => {
+  const p = _piApprovePayment(piPaymentId);
+  p.catch(() => {}); /* intentional – rejection propagates via caller's await */
+  return p;
+};
+
+const _piCompletePayment = async (
   piPaymentId: string,
   txId?: string,
   eventData?: {
@@ -131,7 +157,7 @@ export const piCompletePayment = async (
 ): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/complete`;
   logInfo('Calling Pi API: complete', { piPaymentId, txId });
-  await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT);
+  await callPiApi(url, { txid: txId ?? '' }, COMPLETE_TIMEOUT, 'PI_COMPLETE_FAILED');
   logInfo('Pi API complete succeeded', { piPaymentId, txId });
 
   if (eventData) {
@@ -157,12 +183,33 @@ export const piCompletePayment = async (
   }
 };
 
+export const piCompletePayment = (
+  piPaymentId: string,
+  txId?: string,
+  eventData?: {
+    paymentId: string;
+    userId:    string;
+    amount:    number;
+    currency:  string;
+  },
+): Promise<void> => {
+  const p = _piCompletePayment(piPaymentId, txId, eventData);
+  p.catch(() => {}); /* intentional – rejection propagates via caller's await */
+  return p;
+};
+
 // ✅ Cancel Pi payment directly on Pi Network
-export const piCancelPayment = async (piPaymentId: string): Promise<void> => {
+const _piCancelPayment = async (piPaymentId: string): Promise<void> => {
   const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}/cancel`;
   logInfo('Calling Pi API: cancel', { piPaymentId });
-  await callPiApi(url, undefined, APPROVE_TIMEOUT);
+  await callPiApi(url, undefined, APPROVE_TIMEOUT, 'PI_CANCEL_FAILED');
   logInfo('Pi API cancel succeeded', { piPaymentId });
+};
+
+export const piCancelPayment = (piPaymentId: string): Promise<void> => {
+  const p = _piCancelPayment(piPaymentId);
+  p.catch(() => {}); /* intentional – rejection propagates via caller's await */
+  return p;
 };
 
 export const _resetCircuitBreaker = (): void => {
