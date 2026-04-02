@@ -592,7 +592,7 @@ expressApp.use('/api/v1/payment', paymentRateLimiter);
 expressApp.use('/api/payment',    paymentRateLimiter);
 
 // ✅ Global rate limiter — يستثني health/ready/docs
-expressApp.use((req, res, next) => {
+expressApp.use((req: Request, res: Response, next: NextFunction) => {
   const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json'];
   if (excluded.some(path => req.path.startsWith(path))) {
     return next();
