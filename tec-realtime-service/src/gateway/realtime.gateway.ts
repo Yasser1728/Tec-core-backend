@@ -6,12 +6,19 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { JwtService } from '@nestjs/jwt';
-import { Logger } from '@nestjs/common';
+import { JwtService }     from '@nestjs/jwt';
+import { Logger }         from '@nestjs/common';
+
+// ✅ CORS — specific origins بدل *
+const getAllowedOrigins = (): string[] =>
+  process.env.ALLOWED_ORIGINS
+    ?.split(',')
+    .map(s => s.trim())
+    .filter(Boolean) ?? ['https://tec-app.vercel.app'];
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin:      getAllowedOrigins(),
     credentials: true,
   },
   transports: ['websocket', 'polling'],
@@ -20,9 +27,9 @@ export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
-  server!: Server; // ✅ fix
+  server!: Server;
 
-  private readonly logger = new Logger('RealtimeGateway');
+  private readonly logger       = new Logger('RealtimeGateway');
   private readonly connectedUsers = new Map<string, string>();
 
   constructor(private readonly jwtService: JwtService) {}
@@ -44,7 +51,7 @@ export class RealtimeGateway
       }
 
       const decoded = this.jwtService.verify(token) as any;
-      const userId = decoded.sub ?? decoded.id;
+      const userId  = decoded.sub ?? decoded.id;
 
       client.join(userId);
       this.connectedUsers.set(client.id, userId);
@@ -52,11 +59,11 @@ export class RealtimeGateway
       this.logger.log(`[WS] Connected: ${userId} (socket: ${client.id})`);
 
       client.emit('connected', {
-        status: 'connected',
+        status:    'connected',
         userId,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
+    } catch {
       this.logger.warn(`[WS] Auth failed — disconnecting ${client.id}`);
       client.disconnect();
     }
