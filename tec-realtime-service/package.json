@@ -27,7 +27,6 @@
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@types/node": "^20.19.33",
-    "@types/pino": "^9.0.0",
     "typescript": "^5.9.3"
   }
 }
