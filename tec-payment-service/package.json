@@ -14,6 +14,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@tec/shared":        "file:../shared",
     "@prisma/client":     "^5.22.0",
     "@sentry/node":       "^10.39.0",
     "cors":               "^2.8.6",
