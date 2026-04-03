@@ -591,27 +591,25 @@ app.useGlobalFilters(new GlobalExceptionFilter());
     res.setHeader('Content-Type', 'application/json');
     res.send(swaggerSpec);
   });
-  
+
   // ── JWT Auth — validate before proxy ─────────────────
   expressApp.use(jwtAuthMiddleware);
 
   // ── Rate Limiting ─────────────────────────────────────
   expressApp.use('/api/v1/auth',    authRateLimiter);
-// ── Rate Limiting ─────────────────────────────────────
-expressApp.use('/api/v1/auth',    authRateLimiter);
-expressApp.use('/api/auth',       authRateLimiter);
-expressApp.use('/api/v1/payment', paymentRateLimiter);
-expressApp.use('/api/payment',    paymentRateLimiter);
+  expressApp.use('/api/auth',       authRateLimiter);
+  expressApp.use('/api/v1/payment', paymentRateLimiter);
+  expressApp.use('/api/payment',    paymentRateLimiter);
 
-// ✅ Global rate limiter — يستثني health/ready/docs
-expressApp.use((req: Request, res: Response, next: NextFunction) => {
-  const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json'];
-  if (excluded.some(path => req.path.startsWith(path))) {
-    return next();
-  }
-  return rateLimiter(req, res, next);
-});
-  
+  // ✅ Global rate limiter — يستثني health/ready/docs
+  expressApp.use((req: Request, res: Response, next: NextFunction) => {
+    const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json'];
+    if (excluded.some(path => req.path.startsWith(path))) {
+      return next();
+    }
+    return rateLimiter(req, res, next);
+  });
+
   // ── Register proxy routes ─────────────────────────────
   const proxyService = app.get(ProxyService);
   proxyService.registerProxies(expressApp);
