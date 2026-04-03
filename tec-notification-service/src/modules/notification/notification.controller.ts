@@ -8,13 +8,13 @@ import {
   Query,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService }          from '@nestjs/jwt';
 
 @Controller('notifications')
 export class NotificationController {
   constructor(
     private readonly notificationService: NotificationService,
-    private readonly jwtService: JwtService,
+    private readonly jwtService:          JwtService,
   ) {}
 
   private getUserId(authorization: string): string {
@@ -23,11 +23,13 @@ export class NotificationController {
     }
     const token = authorization.replace('Bearer ', '');
     try {
-      const decoded = this.jwtService.decode(token) as any; // ← verify → decode
-      if (!decoded) throw new Error('Invalid token');
-      return decoded.sub ?? decoded.id ?? decoded.userId;
+      // ✅ verify() بدل decode() — يتحقق من التوقيع والصلاحية
+      const payload = this.jwtService.verify<{ sub?: string; id?: string; userId?: string }>(token);
+      const userId  = payload.sub ?? payload.id ?? payload.userId;
+      if (!userId) throw new Error('Missing user ID in token');
+      return userId;
     } catch {
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('Invalid or expired token');
     }
   }
 
@@ -36,7 +38,7 @@ export class NotificationController {
     @Headers('authorization') auth: string,
     @Query('limit') limit?: string,
   ) {
-    const userId = this.getUserId(auth);
+    const userId      = this.getUserId(auth);
     const notifications = await this.notificationService.getByUserId(
       userId,
       limit ? parseInt(limit) : 20,
