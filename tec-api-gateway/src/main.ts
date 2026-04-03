@@ -7,6 +7,7 @@ import swaggerUi                        from 'swagger-ui-express';
 import swaggerJsdoc                     from 'swagger-jsdoc';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 import { rateLimiter, authRateLimiter, paymentRateLimiter } from './middleware/rateLimiter';
+import { jwtAuthMiddleware } from './middleware/jwt-auth';
 
 const SERVICE_VERSION  = process.env.SERVICE_VERSION || '1.0.0';
 const serviceStartTime = Date.now();
@@ -591,6 +592,11 @@ app.useGlobalFilters(new GlobalExceptionFilter());
     res.send(swaggerSpec);
   });
   
+  // ── JWT Auth — validate before proxy ─────────────────
+  expressApp.use(jwtAuthMiddleware);
+
+  // ── Rate Limiting ─────────────────────────────────────
+  expressApp.use('/api/v1/auth',    authRateLimiter);
 // ── Rate Limiting ─────────────────────────────────────
 expressApp.use('/api/v1/auth',    authRateLimiter);
 expressApp.use('/api/auth',       authRateLimiter);
