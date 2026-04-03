@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { createHmac, timingSafeEqual }     from 'crypto';
 
 // ── Routes لا تحتاج JWT ───────────────────────────────────
 const PUBLIC_ROUTES: Array<string | RegExp> = [
@@ -26,16 +25,16 @@ const isPublicRoute = (path: string): boolean =>
 
 // ── JWT decode (بدون verify — الـ verify في الـ service) ──
 interface JwtPayload {
-  sub:    string;
-  exp:    number;
-  iat:    number;
-  pi_uid?: string;
+  sub:          string;
+  exp:          number;
+  iat:          number;
+  pi_uid?:      string;
   pi_username?: string;
 }
 
 const decodeJwt = (token: string): JwtPayload | null => {
   try {
-    const parts   = token.split('.');
+    const parts = token.split('.');
     if (parts.length !== 3) return null;
     const payload = Buffer.from(parts[1], 'base64url').toString('utf-8');
     return JSON.parse(payload) as JwtPayload;
@@ -50,7 +49,6 @@ export const jwtAuthMiddleware = (
   res:  Response,
   next: NextFunction,
 ): void => {
-  // Skip public routes
   if (isPublicRoute(req.path)) {
     next();
     return;
@@ -100,9 +98,9 @@ export const jwtAuthMiddleware = (
 
   // ── Inject userId header للـ downstream services ──────
   if (payload.sub) {
-    req.headers['x-user-id']       = payload.sub;
-    req.headers['x-pi-uid']        = payload.pi_uid        ?? '';
-    req.headers['x-pi-username']   = payload.pi_username   ?? '';
+    req.headers['x-user-id']     = payload.sub;
+    req.headers['x-pi-uid']      = payload.pi_uid      ?? '';
+    req.headers['x-pi-username'] = payload.pi_username ?? '';
   }
 
   next();
