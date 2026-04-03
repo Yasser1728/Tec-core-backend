@@ -1,136 +1,239 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { R2Service } from './r2.service';
-import { v4 as uuidv4 } from 'uuid';
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException }   from '@nestjs/common';
+import { StorageService, FileTypeEnum } from '../modules/storage/storage.service';
+import { PrismaService }       from '../prisma/prisma.service';
+import { R2Service }           from '../modules/storage/r2.service';
 
-export type FileTypeEnum = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'AUDIO' | 'OTHER';
-
-const getMimeFileType = (mimeType: string): FileTypeEnum => {
-  if (mimeType.startsWith('image/')) return 'IMAGE';
-  if (mimeType.startsWith('video/')) return 'VIDEO';
-  if (mimeType.startsWith('audio/')) return 'AUDIO';
-  if (
-    mimeType === 'application/pdf' ||
-    mimeType.includes('document') ||
-    mimeType.includes('text/')
-  )
-    return 'DOCUMENT';
-  return 'OTHER';
+// ── Mock Data ─────────────────────────────────────────────────
+const mockFile = {
+  id:         'file-uuid-1',
+  user_id:    'user-uuid-1',
+  key:        'uploads/user-uuid-1/file-uuid-1.jpg',
+  url:        'https://r2.example.com/tec-storage/uploads/user-uuid-1/file-uuid-1.jpg',
+  filename:   'photo.jpg',
+  mime_type:  'image/jpeg',
+  size:       1024 * 100,
+  type:       'IMAGE',
+  bucket:     'tec-storage',
+  metadata:   {},
+  created_at: new Date(),
+  updated_at: new Date(),
 };
 
-@Injectable()
-export class StorageService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly r2: R2Service,
-  ) {}
+const prismaMock = {
+  file: {
+    create:    jest.fn(),
+    findFirst: jest.fn(),
+    findMany:  jest.fn(),
+    delete:    jest.fn(),
+  },
+};
 
-  // ✅ Generate upload URL
-  async getUploadUrl(data: {
-    userId: string;
-    filename: string;
-    mimeType: string;
-    size: number;
-    folder?: string;
-  }) {
-    // Validate file size (max 10MB)
-    const MAX_SIZE = 10 * 1024 * 1024;
-    if (data.size > MAX_SIZE) {
-      throw new Error('File size exceeds 10MB limit');
-    }
+const r2Mock = {
+  getUploadUrl:   jest.fn(),
+  getDownloadUrl: jest.fn(),
+  deleteFile:     jest.fn(),
+};
 
-    // Validate MIME type
-    const ALLOWED_TYPES = [
-      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-      'application/pdf',
-      'video/mp4',
-      'audio/mpeg',
-    ];
+// ── Tests ─────────────────────────────────────────────────────
+describe('StorageService', () => {
+  let service: StorageService;
 
-    if (!ALLOWED_TYPES.includes(data.mimeType)) {
-      throw new Error(`File type ${data.mimeType} is not allowed`);
-    }
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        StorageService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: R2Service,     useValue: r2Mock     },
+      ],
+    }).compile();
 
-    const fileId = uuidv4();
-    const ext = data.filename.split('.').pop();
-    const folder = data.folder ?? 'uploads';
-    const key = `${folder}/${data.userId}/${fileId}.${ext}`;
+    service = module.get<StorageService>(StorageService);
+    jest.clearAllMocks();
+  });
 
-    const uploadUrl = await this.r2.getUploadUrl(key, data.mimeType);
+  // ── getUploadUrl ──────────────────────────────────────────────
+  describe('getUploadUrl', () => {
+    it('returns upload URL for valid file', async () => {
+      r2Mock.getUploadUrl.mockResolvedValue('https://presigned.url');
 
-    return {
-      uploadUrl,
-      key,
-      fileId,
-    };
-  }
+      const result = await service.getUploadUrl({
+        userId:   'user-uuid-1',
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size:     1024 * 100,
+      });
 
-  // ✅ Save file metadata after upload
-  async saveFile(data: {
-    userId: string;
-    key: string;
-    filename: string;
-    mimeType: string;
-    size: number;
-    metadata?: Record<string, unknown>;
-  }) {
-    const endpoint = process.env.R2_ENDPOINT ?? '';
-    const bucket = process.env.R2_BUCKET_NAME ?? 'tec-storage';
-    const url = `${endpoint}/${bucket}/${data.key}`;
-
-    const file = await this.prisma.file.create({
-      data: {
-        user_id: data.userId,
-        key: data.key,
-        url,
-        filename: data.filename,
-        mime_type: data.mimeType,
-        size: data.size,
-        type: getMimeFileType(data.mimeType),
-        bucket,
-        metadata: (data.metadata ?? {}) as any,
-      },
+      expect(result.uploadUrl).toBe('https://presigned.url');
+      expect(result.key).toContain('user-uuid-1');
+      expect(result.fileId).toBeDefined();
     });
 
-    console.log(`[StorageService] File saved: ${data.key}`);
-    return file;
-  }
-
-  // ✅ Get file by ID
-  async getFile(id: string, userId: string) {
-    const file = await this.prisma.file.findFirst({
-      where: { id, user_id: userId },
+    it('throws when file exceeds 10MB', async () => {
+      await expect(service.getUploadUrl({
+        userId:   'user-uuid-1',
+        filename: 'large.jpg',
+        mimeType: 'image/jpeg',
+        size:     11 * 1024 * 1024,
+      })).rejects.toThrow('File size exceeds 10MB limit');
     });
 
-    if (!file) throw new NotFoundException('File not found');
-
-    const downloadUrl = await this.r2.getDownloadUrl(file.key);
-    return { ...file, downloadUrl };
-  }
-
-  // ✅ Get all files for user
-  async getUserFiles(userId: string, type?: FileTypeEnum) {
-    return this.prisma.file.findMany({
-      where: {
-        user_id: userId,
-        ...(type ? { type } : {}),
-      },
-      orderBy: { created_at: 'desc' },
-    });
-  }
-
-  // ✅ Delete file
-  async deleteFile(id: string, userId: string) {
-    const file = await this.prisma.file.findFirst({
-      where: { id, user_id: userId },
+    it('throws when MIME type not allowed', async () => {
+      await expect(service.getUploadUrl({
+        userId:   'user-uuid-1',
+        filename: 'script.exe',
+        mimeType: 'application/x-msdownload',
+        size:     1024,
+      })).rejects.toThrow('is not allowed');
     });
 
-    if (!file) throw new NotFoundException('File not found');
+    it('uses custom folder when provided', async () => {
+      r2Mock.getUploadUrl.mockResolvedValue('https://presigned.url');
 
-    await this.r2.deleteFile(file.key);
-    await this.prisma.file.delete({ where: { id } });
+      const result = await service.getUploadUrl({
+        userId:   'user-uuid-1',
+        filename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size:     1024,
+        folder:   'documents',
+      });
 
-    console.log(`[StorageService] File deleted: ${file.key}`);
-    return { success: true };
-  }
-}
+      expect(result.key).toContain('documents/');
+    });
+  });
+
+  // ── saveFile ──────────────────────────────────────────────────
+  describe('saveFile', () => {
+    it('saves file metadata to DB', async () => {
+      prismaMock.file.create.mockResolvedValue(mockFile);
+
+      const result = await service.saveFile({
+        userId:   'user-uuid-1',
+        key:      'uploads/user-uuid-1/file-uuid-1.jpg',
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        size:     1024 * 100,
+      });
+
+      expect(prismaMock.file.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            user_id:   'user-uuid-1',
+            filename:  'photo.jpg',
+            mime_type: 'image/jpeg',
+            type:      'IMAGE',
+          }),
+        }),
+      );
+      expect(result).toEqual(mockFile);
+    });
+
+    it('correctly identifies VIDEO type', async () => {
+      prismaMock.file.create.mockResolvedValue({ ...mockFile, type: 'VIDEO' });
+
+      await service.saveFile({
+        userId:   'user-uuid-1',
+        key:      'uploads/user-uuid-1/video.mp4',
+        filename: 'video.mp4',
+        mimeType: 'video/mp4',
+        size:     1024 * 1024,
+      });
+
+      expect(prismaMock.file.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ type: 'VIDEO' }),
+        }),
+      );
+    });
+
+    it('correctly identifies DOCUMENT type', async () => {
+      prismaMock.file.create.mockResolvedValue({ ...mockFile, type: 'DOCUMENT' });
+
+      await service.saveFile({
+        userId:   'user-uuid-1',
+        key:      'uploads/user-uuid-1/doc.pdf',
+        filename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        size:     512 * 1024,
+      });
+
+      expect(prismaMock.file.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ type: 'DOCUMENT' }),
+        }),
+      );
+    });
+  });
+
+  // ── getFile ───────────────────────────────────────────────────
+  describe('getFile', () => {
+    it('returns file with download URL', async () => {
+      prismaMock.file.findFirst.mockResolvedValue(mockFile);
+      r2Mock.getDownloadUrl.mockResolvedValue('https://download.url');
+
+      const result = await service.getFile('file-uuid-1', 'user-uuid-1');
+
+      expect(result.downloadUrl).toBe('https://download.url');
+      expect(result.id).toBe('file-uuid-1');
+    });
+
+    it('throws NotFoundException when file not found', async () => {
+      prismaMock.file.findFirst.mockResolvedValue(null);
+
+      await expect(service.getFile('non-existent', 'user-uuid-1'))
+        .rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── getUserFiles ──────────────────────────────────────────────
+  describe('getUserFiles', () => {
+    it('returns all files for user', async () => {
+      prismaMock.file.findMany.mockResolvedValue([mockFile]);
+
+      const result = await service.getUserFiles('user-uuid-1');
+
+      expect(prismaMock.file.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { user_id: 'user-uuid-1' },
+        }),
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('filters by file type', async () => {
+      prismaMock.file.findMany.mockResolvedValue([mockFile]);
+
+      await service.getUserFiles('user-uuid-1', 'IMAGE');
+
+      expect(prismaMock.file.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { user_id: 'user-uuid-1', type: 'IMAGE' },
+        }),
+      );
+    });
+  });
+
+  // ── deleteFile ────────────────────────────────────────────────
+  describe('deleteFile', () => {
+    it('deletes file from R2 and DB', async () => {
+      prismaMock.file.findFirst.mockResolvedValue(mockFile);
+      r2Mock.deleteFile.mockResolvedValue(undefined);
+      prismaMock.file.delete.mockResolvedValue(mockFile);
+
+      const result = await service.deleteFile('file-uuid-1', 'user-uuid-1');
+
+      expect(r2Mock.deleteFile).toHaveBeenCalledWith(mockFile.key);
+      expect(prismaMock.file.delete).toHaveBeenCalledWith({
+        where: { id: 'file-uuid-1' },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('throws NotFoundException when file not found', async () => {
+      prismaMock.file.findFirst.mockResolvedValue(null);
+
+      await expect(service.deleteFile('non-existent', 'user-uuid-1'))
+        .rejects.toThrow(NotFoundException);
+    });
+  });
+});
