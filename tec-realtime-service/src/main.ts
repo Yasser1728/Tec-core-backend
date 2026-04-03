@@ -9,19 +9,24 @@ import * as Sentry from '@sentry/node';
 async function bootstrap() {
   if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
     Sentry.init({
-      dsn: process.env.SENTRY_DSN,
-      environment: process.env.NODE_ENV,
+      dsn:              process.env.SENTRY_DSN,
+      environment:      process.env.NODE_ENV,
       tracesSampleRate: 0.1,
-      initialScope: { tags: { service: 'realtime-service' } },
+      initialScope:     { tags: { service: 'realtime-service' } },
     });
     console.log('[Sentry] Initialised for realtime-service');
   }
 
-  // ✅ Express explicitly
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // ✅ CORS — specific origins بدل *
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ?.split(',')
+    .map(s => s.trim())
+    .filter(Boolean) ?? ['https://tec-app.vercel.app'];
+
   app.enableCors({
-    origin: '*',
+    origin:      allowedOrigins,
     credentials: true,
   });
 
