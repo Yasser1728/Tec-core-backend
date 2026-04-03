@@ -1,0 +1,22 @@
+{
+  "name": "@tec/shared",
+  "version": "1.0.0",
+  "description": "TEC shared utilities — internal auth, event bus",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "ioredis": "^5.9.3",
+    "pino": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "express": "^4.18.0"
+  }
+}
