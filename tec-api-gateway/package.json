@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@nestjs/cli":         "^10.3.0",
+    "@nestjs/testing":     "^10.3.0",
     "@eslint/js":          "^9.0.0",
     "@types/cors":         "^2.8.19",
     "@types/express":      "^4.17.25",
@@ -61,6 +62,8 @@
   "jest": {
     "preset":          "ts-jest",
     "testEnvironment": "node",
-    "testMatch":       ["**/__tests__/**/*.test.ts"]
+    "testMatch":       ["**/__tests__/**/*.spec.ts", "**/__tests__/**/*.test.ts"],
+    "testTimeout":     10000,
+    "forceExit":       true
   }
 }
