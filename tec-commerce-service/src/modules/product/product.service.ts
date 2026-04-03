@@ -1,195 +1,92 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException }   from '@nestjs/common';
-import { ProductService }      from '../modules/product/product.service';
-import { PrismaService }       from '../prisma/prisma.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
-// ── Mock Data ─────────────────────────────────────────────────
-const mockProduct = {
-  id:          'prod-uuid-1',
-  seller_id:   'seller-uuid-1',
-  title:       'Test Product',
-  description: 'A test product',
-  price:       10.5,
-  image_url:   null,
-  stock:       100,
-  category:    'electronics',
-  status:      'ACTIVE',
-  created_at:  new Date(),
-  updated_at:  new Date(),
-};
+@Injectable()
+export class ProductService {
+  constructor(private readonly prisma: PrismaService) {}
 
-const prismaMock = {
-  product: {
-    create:     jest.fn(),
-    findMany:   jest.fn(),
-    findUnique: jest.fn(),
-    findFirst:  jest.fn(),
-    update:     jest.fn(),
-  },
-};
-
-// ── Tests ─────────────────────────────────────────────────────
-describe('ProductService', () => {
-  let service: ProductService;
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ProductService,
-        { provide: PrismaService, useValue: prismaMock },
-      ],
-    }).compile();
-
-    service = module.get<ProductService>(ProductService);
-    jest.clearAllMocks();
-  });
-
-  // ── create ───────────────────────────────────────────────────
-  describe('create', () => {
-    it('creates a product successfully', async () => {
-      prismaMock.product.create.mockResolvedValue(mockProduct);
-
-      const result = await service.create({
-        sellerId:    'seller-uuid-1',
-        title:       'Test Product',
-        description: 'A test product',
-        price:       10.5,
-        stock:       100,
-        category:    'electronics',
-      });
-
-      expect(prismaMock.product.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          seller_id: 'seller-uuid-1',
-          title:     'Test Product',
-          price:     10.5,
-          stock:     100,
-          status:    'ACTIVE',
-        }),
-      });
-      expect(result).toEqual(mockProduct);
+  async create(data: {
+    sellerId:     string;
+    title:        string;
+    description?: string;
+    price:        number;
+    imageUrl?:    string;
+    stock:        number;
+    category?:    string;
+  }) {
+    return this.prisma.product.create({
+      data: {
+        seller_id:   data.sellerId,
+        title:       data.title,
+        description: data.description,
+        price:       data.price,
+        image_url:   data.imageUrl,
+        stock:       data.stock,
+        category:    data.category,
+        status:      'ACTIVE',
+      },
     });
-  });
+  }
 
-  // ── findAll ──────────────────────────────────────────────────
-  describe('findAll', () => {
-    it('returns all active products', async () => {
-      prismaMock.product.findMany.mockResolvedValue([mockProduct]);
-
-      const result = await service.findAll();
-
-      expect(prismaMock.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where:   { status: 'ACTIVE' },
-          take:    20,
-          skip:    0,
-        }),
-      );
-      expect(result).toHaveLength(1);
+  async findAll(filters?: {
+    category?: string;
+    sellerId?: string;
+    limit?:    number;
+    offset?:   number;
+  }) {
+    return this.prisma.product.findMany({
+      where: {
+        status: 'ACTIVE',
+        ...(filters?.category ? { category:  filters.category } : {}),
+        ...(filters?.sellerId ? { seller_id: filters.sellerId } : {}),
+      },
+      orderBy: { created_at: 'desc' },
+      take:    filters?.limit  ?? 20,
+      skip:    filters?.offset ?? 0,
     });
+  }
 
-    it('filters by category', async () => {
-      prismaMock.product.findMany.mockResolvedValue([mockProduct]);
+  async findById(id: string) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+    return product;
+  }
 
-      await service.findAll({ category: 'electronics' });
-
-      expect(prismaMock.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { status: 'ACTIVE', category: 'electronics' },
-        }),
-      );
+  async update(id: string, sellerId: string, data: {
+    title?:       string;
+    description?: string;
+    price?:       number;
+    imageUrl?:    string;
+    stock?:       number;
+    status?:      'ACTIVE' | 'INACTIVE' | 'SOLD_OUT';
+  }) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, seller_id: sellerId },
     });
+    if (!product) throw new NotFoundException('Product not found');
 
-    it('filters by sellerId', async () => {
-      prismaMock.product.findMany.mockResolvedValue([mockProduct]);
-
-      await service.findAll({ sellerId: 'seller-uuid-1' });
-
-      expect(prismaMock.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { status: 'ACTIVE', seller_id: 'seller-uuid-1' },
-        }),
-      );
+    return this.prisma.product.update({
+      where: { id },
+      data: {
+        ...(data.title       && { title:       data.title       }),
+        ...(data.description && { description: data.description }),
+        ...(data.price       && { price:       data.price       }),
+        ...(data.imageUrl    && { image_url:   data.imageUrl    }),
+        ...(data.stock !== undefined && { stock: data.stock     }),
+        ...(data.status      && { status:      data.status      }),
+      },
     });
+  }
 
-    it('respects limit and offset', async () => {
-      prismaMock.product.findMany.mockResolvedValue([]);
-
-      await service.findAll({ limit: 5, offset: 10 });
-
-      expect(prismaMock.product.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 5, skip: 10 }),
-      );
+  async delete(id: string, sellerId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, seller_id: sellerId },
     });
-  });
+    if (!product) throw new NotFoundException('Product not found');
 
-  // ── findById ─────────────────────────────────────────────────
-  describe('findById', () => {
-    it('returns product by ID', async () => {
-      prismaMock.product.findUnique.mockResolvedValue(mockProduct);
-
-      const result = await service.findById('prod-uuid-1');
-
-      expect(result).toEqual(mockProduct);
+    return this.prisma.product.update({
+      where: { id },
+      data:  { status: 'INACTIVE' },
     });
-
-    it('throws NotFoundException when not found', async () => {
-      prismaMock.product.findUnique.mockResolvedValue(null);
-
-      await expect(service.findById('non-existent'))
-        .rejects.toThrow(NotFoundException);
-    });
-  });
-
-  // ── update ───────────────────────────────────────────────────
-  describe('update', () => {
-    it('updates product successfully', async () => {
-      prismaMock.product.findFirst.mockResolvedValue(mockProduct);
-      prismaMock.product.update.mockResolvedValue({
-        ...mockProduct,
-        title: 'Updated Title',
-      });
-
-      const result = await service.update('prod-uuid-1', 'seller-uuid-1', {
-        title: 'Updated Title',
-      });
-
-      expect(result.title).toBe('Updated Title');
-    });
-
-    it('throws NotFoundException when product not found or wrong seller', async () => {
-      prismaMock.product.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.update('prod-uuid-1', 'wrong-seller', { title: 'New' }),
-      ).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  // ── delete ───────────────────────────────────────────────────
-  describe('delete', () => {
-    it('soft-deletes product by setting status to INACTIVE', async () => {
-      prismaMock.product.findFirst.mockResolvedValue(mockProduct);
-      prismaMock.product.update.mockResolvedValue({
-        ...mockProduct,
-        status: 'INACTIVE',
-      });
-
-      const result = await service.delete('prod-uuid-1', 'seller-uuid-1');
-
-      expect(prismaMock.product.update).toHaveBeenCalledWith({
-        where: { id: 'prod-uuid-1' },
-        data:  { status: 'INACTIVE' },
-      });
-      expect(result.status).toBe('INACTIVE');
-    });
-
-    it('throws NotFoundException when product not found', async () => {
-      prismaMock.product.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.delete('prod-uuid-1', 'wrong-seller'),
-      ).rejects.toThrow(NotFoundException);
-    });
-  });
-});
+  }
+}
