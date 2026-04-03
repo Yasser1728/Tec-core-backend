@@ -1,26 +1,33 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory }           from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { AppModule } from './app.module';
-import * as Sentry from '@sentry/node';
+import { AppModule }             from './app.module';
+import * as Sentry               from '@sentry/node';
+import pino                      from 'pino';
+
+const logger = pino({
+  level:     process.env.LOG_LEVEL ?? 'info',
+  base:      { service: 'kyc-service' },
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
-    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    logger.error('FATAL: INTERNAL_SECRET must be configured in production');
     process.exit(1);
   }
 
   if (process.env.SENTRY_DSN && process.env.NODE_ENV === 'production') {
     Sentry.init({
-      dsn: process.env.SENTRY_DSN,
-      environment: process.env.NODE_ENV,
+      dsn:              process.env.SENTRY_DSN,
+      environment:      process.env.NODE_ENV,
       tracesSampleRate: 0.1,
-      initialScope: { tags: { service: 'kyc-service' } },
+      initialScope:     { tags: { service: 'kyc-service' } },
     });
-    console.log('[Sentry] Initialised for kyc-service');
+    logger.info('[Sentry] Initialised for kyc-service');
   }
 
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -28,16 +35,20 @@ async function bootstrap() {
     new FastifyAdapter({ logger: false }),
   );
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean);
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ?.split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
+    origin:      allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
     credentials: true,
   });
 
   const PORT = process.env.PORT ?? 5008;
   await app.listen(PORT, '0.0.0.0');
 
-  console.log(`🔐 KYC Service running on port ${PORT}`);
+  logger.info(`🔐 KYC Service running on port ${PORT}`);
 }
 
 bootstrap();
