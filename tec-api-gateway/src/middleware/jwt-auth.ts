@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { verify, JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
 
 // ── Routes لا تحتاج JWT ───────────────────────────────────
 const PUBLIC_ROUTES: Array<string | RegExp> = [
@@ -7,6 +8,7 @@ const PUBLIC_ROUTES: Array<string | RegExp> = [
   '/metrics',
   '/api/docs',
   '/api/docs.json',
+  '/api/cache/stats',
   '/api/v1/auth/pi-login',
   '/api/auth/pi-login',
   '/api/v1/auth/refresh',
@@ -23,7 +25,6 @@ const isPublicRoute = (path: string): boolean =>
       : route.test(path),
   );
 
-// ── JWT decode (بدون verify — الـ verify في الـ service) ──
 interface JwtPayload {
   sub:          string;
   exp:          number;
@@ -31,17 +32,6 @@ interface JwtPayload {
   pi_uid?:      string;
   pi_username?: string;
 }
-
-const decodeJwt = (token: string): JwtPayload | null => {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = Buffer.from(parts[1], 'base64url').toString('utf-8');
-    return JSON.parse(payload) as JwtPayload;
-  } catch {
-    return null;
-  }
-};
 
 // ── Middleware ────────────────────────────────────────────
 export const jwtAuthMiddleware = (
@@ -67,41 +57,76 @@ export const jwtAuthMiddleware = (
     return;
   }
 
-  const token   = authHeader.replace('Bearer ', '');
-  const payload = decodeJwt(token);
+  const token  = authHeader.replace('Bearer ', '');
+  const secret = process.env.JWT_SECRET;
 
-  if (!payload) {
-    res.status(401).json({
+  if (!secret) {
+    res.status(500).json({
       success: false,
       error: {
-        code:      'INVALID_TOKEN',
-        message:   'Token is malformed',
-        requestId: req.headers['x-request-id'],
+        code:    'INTERNAL_ERROR',
+        message: 'JWT secret not configured',
       },
     });
     return;
   }
 
-  // ── Check expiry ──────────────────────────────────────
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && payload.exp < now) {
-    res.status(401).json({
-      success: false,
-      error: {
-        code:      'TOKEN_EXPIRED',
-        message:   'Token has expired',
-        requestId: req.headers['x-request-id'],
-      },
-    });
-    return;
-  }
+  try {
+    // ✅ verify() — يتحقق من التوقيع والصلاحية والـ algorithm
+    const payload = verify(token, secret, {
+      algorithms: ['HS256'],
+    }) as JwtPayload;
 
-  // ── Inject userId header للـ downstream services ──────
-  if (payload.sub) {
+    if (!payload.sub) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code:      'INVALID_TOKEN',
+          message:   'Token missing subject',
+          requestId: req.headers['x-request-id'],
+        },
+      });
+      return;
+    }
+
+    // ✅ Inject userId header للـ downstream services
     req.headers['x-user-id']     = payload.sub;
     req.headers['x-pi-uid']      = payload.pi_uid      ?? '';
     req.headers['x-pi-username'] = payload.pi_username ?? '';
-  }
 
-  next();
+    next();
+
+  } catch (err) {
+    if (err instanceof TokenExpiredError) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code:      'TOKEN_EXPIRED',
+          message:   'Token has expired',
+          requestId: req.headers['x-request-id'],
+        },
+      });
+      return;
+    }
+
+    if (err instanceof JsonWebTokenError) {
+      res.status(401).json({
+        success: false,
+        error: {
+          code:      'INVALID_TOKEN',
+          message:   'Token is invalid or tampered',
+          requestId: req.headers['x-request-id'],
+        },
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        code:    'INTERNAL_ERROR',
+        message: 'Token verification failed',
+      },
+    });
+  }
 };
