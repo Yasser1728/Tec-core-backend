@@ -131,7 +131,7 @@ jobs:
       - name: Build Docker image (no push)
         uses: docker/build-push-action@v5
         with:
-          context:    ${{ matrix.service }}
+          context:    .
           file:       ${{ matrix.service }}/Dockerfile
           push:       false
           tags:       ${{ matrix.image }}:${{ github.sha }}
