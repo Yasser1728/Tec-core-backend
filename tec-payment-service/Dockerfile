@@ -7,14 +7,14 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# ✅ Copy shared package first
-COPY ../shared ./shared
+# ✅ Copy shared package from root context
+COPY shared ./shared
 RUN cd shared && npm install && npm run build
 
-COPY package*.json ./
+COPY tec-payment-service/package*.json ./
 RUN npm install --ignore-scripts
 
-COPY . .
+COPY tec-payment-service/ .
 
 RUN npx prisma generate
 RUN npm run build
@@ -28,19 +28,18 @@ ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# ✅ Copy built shared package
 COPY --from=builder /app/shared ./shared
 
-COPY package*.json ./
+COPY tec-payment-service/package*.json ./
 RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
-COPY prisma/schema.prisma ./prisma/schema.prisma
-COPY prisma/migrations ./prisma/migrations
+COPY tec-payment-service/prisma/schema.prisma ./prisma/schema.prisma
+COPY tec-payment-service/prisma/migrations ./prisma/migrations
 
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
+COPY tec-payment-service/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 ARG PORT=5003
