@@ -7,13 +7,16 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# ✅ Copy shared package first
+COPY ../shared ./shared
+RUN cd shared && npm install && npm run build
+
 COPY package*.json ./
 RUN npm install --ignore-scripts
 
 COPY . .
 
 RUN npx prisma generate
-
 RUN npm run build
 
 # Stage 2: Production
@@ -25,8 +28,10 @@ ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+# ✅ Copy built shared package
+COPY --from=builder /app/shared ./shared
 
+COPY package*.json ./
 RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
