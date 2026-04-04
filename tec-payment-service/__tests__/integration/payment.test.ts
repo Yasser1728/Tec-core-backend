@@ -665,7 +665,13 @@ describe('Payment Service Integration Tests', () => {
   describe('POST /payments/resolve-incomplete', () => {
     const piPaymentId = 'pi_payment_abc123';
 
-    it('should return not_found when payment does not exist', async () => {
+    it('should return cancelled_on_pi when payment does not exist in DB', async () => {
+      // Pi says payment is stuck (not transaction_verified)
+      const piStatus = { developer_approved: false, transaction_verified: false, developer_completed: false, cancelled: false, user_cancelled: false };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus }) } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({}) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(null);
 
       const response = await request(app)
@@ -677,7 +683,7 @@ describe('Payment Service Integration Tests', () => {
       expect(response.body.data.action).toBe('cancelled_on_pi');
     });
 
-    it('should cancel a created payment and return action: cancelled', async () => {
+    it('should cancel a local payment and return action: cancelled_on_pi when Pi says not verified', async () => {
       const mockPayment = {
         id: '123e4567-e89b-12d3-a456-426614174001',
         user_id: '123e4567-e89b-12d3-a456-426614174000',
@@ -689,6 +695,11 @@ describe('Payment Service Integration Tests', () => {
         updated_at: new Date(),
       };
 
+      const piStatus = { developer_approved: false, transaction_verified: false, developer_completed: false, cancelled: false, user_cancelled: false };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus }) } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({}) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
       mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'cancelled' });
 
@@ -698,7 +709,7 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.action).toBe('cancelled');
+      expect(response.body.data.action).toBe('cancelled_on_pi');
       expect(mockPrismaClient.payment.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockPayment.id },
@@ -719,6 +730,12 @@ describe('Payment Service Integration Tests', () => {
         updated_at: new Date(),
       };
 
+      const piStatus = { developer_approved: true, transaction_verified: true, developer_completed: false, cancelled: false, user_cancelled: false };
+      const txid = 'abc123txid';
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus, transaction: { txid } }) } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({}) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
       mockPrismaClient.payment.update.mockResolvedValue({ ...mockPayment, status: 'completed' });
 
@@ -737,7 +754,7 @@ describe('Payment Service Integration Tests', () => {
       );
     });
 
-    it('should return already_resolved for a completed payment', async () => {
+    it('should return already_completed when Pi reports developer_completed', async () => {
       const mockPayment = {
         id: '123e4567-e89b-12d3-a456-426614174001',
         status: 'completed',
@@ -745,6 +762,10 @@ describe('Payment Service Integration Tests', () => {
         pi_payment_id: piPaymentId,
       };
 
+      const piStatus = { developer_approved: true, transaction_verified: true, developer_completed: true, cancelled: false, user_cancelled: false };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus }) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
 
       const response = await request(app)
@@ -753,10 +774,10 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.action).toBe('already_resolved');
+      expect(response.body.data.action).toBe('already_completed');
     });
 
-    it('should return already_resolved for a cancelled payment', async () => {
+    it('should return cancelled_on_pi when Pi reports payment cancelled', async () => {
       const mockPayment = {
         id: '123e4567-e89b-12d3-a456-426614174001',
         status: 'cancelled',
@@ -764,6 +785,11 @@ describe('Payment Service Integration Tests', () => {
         pi_payment_id: piPaymentId,
       };
 
+      const piStatus = { developer_approved: false, transaction_verified: false, developer_completed: false, cancelled: true, user_cancelled: false };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus }) } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({}) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
 
       const response = await request(app)
@@ -772,10 +798,10 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.action).toBe('already_resolved');
+      expect(response.body.data.action).toBe('cancelled_on_pi');
     });
 
-    it('should return already_resolved for a failed payment', async () => {
+    it('should return cancelled_on_pi when Pi reports payment stuck (not verified)', async () => {
       const mockPayment = {
         id: '123e4567-e89b-12d3-a456-426614174001',
         status: 'failed',
@@ -783,6 +809,11 @@ describe('Payment Service Integration Tests', () => {
         pi_payment_id: piPaymentId,
       };
 
+      const piStatus = { developer_approved: true, transaction_verified: false, developer_completed: false, cancelled: false, user_cancelled: false };
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({ status: piStatus }) } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200, text: jest.fn().mockResolvedValue(''), json: jest.fn().mockResolvedValue({}) } as unknown as Response);
+
       mockPrismaClient.payment.findUnique.mockResolvedValue(mockPayment);
 
       const response = await request(app)
@@ -791,7 +822,7 @@ describe('Payment Service Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.action).toBe('already_resolved');
+      expect(response.body.data.action).toBe('cancelled_on_pi');
     });
 
     it('should return 400 for missing pi_payment_id', async () => {
