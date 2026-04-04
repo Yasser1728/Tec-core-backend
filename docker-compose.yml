@@ -1,40 +1,261 @@
 version: '3.8'
 
 services:
-  tec-api-gateway:
-    image: your_api_gateway_image
-    ports:
-      - "8080:8080"
-    depends_on:
-      - tec-auth-service
-      - tec-wallet-service
-      - tec-payment-service
-
-  tec-auth-service:
-    image: your_auth_service_image
-    ports:
-      - "8081:8080"
-
-  tec-wallet-service:
-    image: your_wallet_service_image
-    ports:
-      - "8082:8080"
-
-  tec-payment-service:
-    image: your_payment_service_image
-    ports:
-      - "8083:8080"
-
+  # ── Infrastructure ─────────────────────────────────────────
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
-    image: postgres:alpine
+    image: postgres:16-alpine
     environment:
-      POSTGRES_DB: your_db_name
-      POSTGRES_USER: your_db_user
-      POSTGRES_PASSWORD: your_db_password
+      POSTGRES_DB:       tec_db
+      POSTGRES_USER:     tec_user
+      POSTGRES_PASSWORD: tec_password
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tec_user -d tec_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Services ───────────────────────────────────────────────
+  tec-api-gateway:
+    build:
+      context: ./tec-api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:3000"
+    environment:
+      NODE_ENV:             development
+      PORT:                 3000
+      AUTH_SERVICE_URL:     http://tec-auth-service:5001
+      PAYMENT_SERVICE_URL:  http://tec-payment-service:5003
+      WALLET_SERVICE_URL:   http://tec-wallet-service:5002
+      ASSET_SERVICE_URL:    http://tec-asset-service:5009
+      KYC_SERVICE_URL:      http://tec-kyc-service:5008
+      NOTIFICATION_SERVICE_URL: http://tec-notification-service:5007
+      STORAGE_SERVICE_URL:  http://tec-storage-service:5006
+      COMMERCE_SERVICE_URL: http://tec-commerce-service:5005
+      ANALYTICS_SERVICE_URL: http://tec-analytics-service:5011
+      IDENTITY_SERVICE_URL: http://tec-identity-service:5004
+      REALTIME_SERVICE_URL: http://tec-realtime-service:5010
+      JWT_SECRET:           ${JWT_SECRET}
+      INTERNAL_SECRET:      ${INTERNAL_SECRET}
+    depends_on:
+      - tec-auth-service
+      - tec-payment-service
+      - tec-wallet-service
+
+  tec-auth-service:
+    build:
+      context: ./tec-auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      NODE_ENV:        development
+      PORT:            5001
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_auth
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      JWT_EXPIRES_IN:  86400
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      PI_API_KEY:      ${PI_API_KEY}
+      PI_SANDBOX:      true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tec-wallet-service:
+    build:
+      context: ./tec-wallet-service
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      NODE_ENV:        development
+      PORT:            5002
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_wallet
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tec-payment-service:
+    build:
+      context: ./tec-payment-service
+      dockerfile: Dockerfile
+    ports:
+      - "5003:5003"
+    environment:
+      NODE_ENV:        development
+      PORT:            5003
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_payment
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      PI_API_KEY:      ${PI_API_KEY}
+      PI_SANDBOX:      true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tec-identity-service:
+    build:
+      context: ./tec-identity-service
+      dockerfile: Dockerfile
+    ports:
+      - "5004:5004"
+    environment:
+      NODE_ENV:        development
+      PORT:            5004
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_identity
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tec-commerce-service:
+    build:
+      context: ./tec-commerce-service
+      dockerfile: Dockerfile
+    ports:
+      - "5005:5005"
+    environment:
+      NODE_ENV:        development
+      PORT:            5005
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_commerce
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tec-storage-service:
+    build:
+      context: ./tec-storage-service
+      dockerfile: Dockerfile
+    ports:
+      - "5006:5006"
+    environment:
+      NODE_ENV:            development
+      PORT:                5006
+      DATABASE_URL:        postgresql://tec_user:tec_password@postgres:5432/tec_storage
+      JWT_SECRET:          ${JWT_SECRET}
+      INTERNAL_SECRET:     ${INTERNAL_SECRET}
+      R2_ENDPOINT:         ${R2_ENDPOINT}
+      R2_ACCESS_KEY_ID:    ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME:      tec-storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tec-notification-service:
+    build:
+      context: ./tec-notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "5007:5007"
+    environment:
+      NODE_ENV:        development
+      PORT:            5007
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_notification
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tec-kyc-service:
+    build:
+      context: ./tec-kyc-service
+      dockerfile: Dockerfile
+    ports:
+      - "5008:5008"
+    environment:
+      NODE_ENV:        development
+      PORT:            5008
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_kyc
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tec-asset-service:
+    build:
+      context: ./tec-asset-service
+      dockerfile: Dockerfile
+    ports:
+      - "5009:5009"
+    environment:
+      NODE_ENV:        development
+      PORT:            5009
+      DATABASE_URL:    postgresql://tec_user:tec_password@postgres:5432/tec_asset
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tec-realtime-service:
+    build:
+      context: ./tec-realtime-service
+      dockerfile: Dockerfile
+    ports:
+      - "5010:5010"
+    environment:
+      NODE_ENV:        development
+      PORT:            5010
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  tec-analytics-service:
+    build:
+      context: ./tec-analytics-service
+      dockerfile: Dockerfile
+    ports:
+      - "5011:5011"
+    environment:
+      NODE_ENV:        development
+      PORT:            5011
+      DATABASE_URL:    ${ANALYTICS_DATABASE_URL}
+      REDIS_URL:       redis://redis:6379
+      JWT_SECRET:      ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
