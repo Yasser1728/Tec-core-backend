@@ -643,12 +643,14 @@ app.useGlobalFilters(new GlobalExceptionFilter());
   });
 
   // ── 404 ───────────────────────────────────────────────
-  expressApp.use('*', (_req: Request, res: Response) => {
-    res.status(404).json({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
-    });
+ expressApp.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('x-api-version', 'v1');
+    res.setHeader('x-powered-by', 'TEC Gateway');
+    next();
   });
+
+  // ── Cache Middleware ──────────────────────────────────────
+  expressApp.use(cacheMiddleware); 
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
