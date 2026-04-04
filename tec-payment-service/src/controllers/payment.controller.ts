@@ -889,6 +889,12 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
     if (piStatus.developer_approved && piStatus.transaction_verified && !piStatus.developer_completed) {
       logInfo('Payment verified on Pi but not completed. Forcing complete!', { pi_payment_id, txid });
 
+      if (!txid) {
+        logError('Missing txid from Pi for verified payment', { pi_payment_id });
+        res.status(502).json({ success: false, error: { code: 'PI_API_ERROR', message: 'Missing txid from Pi Network' } });
+        return;
+      }
+
       try {
         await piCompletePayment(pi_payment_id, txid);
 

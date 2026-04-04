@@ -665,17 +665,6 @@ describe('Payment Service Integration Tests', () => {
   describe('POST /payments/resolve-incomplete', () => {
     const piPaymentId = 'pi_payment_abc123';
 
-    const makePiStatusFetch = (status: object, txid?: string) =>
-      jest.fn().mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: jest.fn().mockResolvedValue(''),
-        json: jest.fn().mockResolvedValue({
-          status,
-          transaction: txid ? { txid } : undefined,
-        }),
-      } as unknown as Response);
-
     it('should return cancelled_on_pi when payment does not exist in DB', async () => {
       // Pi says payment is stuck (not transaction_verified)
       const piStatus = { developer_approved: false, transaction_verified: false, developer_completed: false, cancelled: false, user_cancelled: false };
