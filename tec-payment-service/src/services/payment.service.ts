@@ -216,3 +216,25 @@ export const _resetCircuitBreaker = (): void => {
   circuitFailures  = 0;
   circuitOpenUntil = 0;
 };
+
+export const piGetPayment = async (piPaymentId: string): Promise<any> => {
+  const apiKey = process.env.PI_API_KEY;
+  if (!apiKey) throw new PiApiError('PI_CONFIG_ERROR', 'PI_API_KEY not configured', 500);
+
+  const url = `${getPiBaseUrl()}/v2/payments/${encodeURIComponent(piPaymentId)}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Key ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new PiApiError('PI_FETCH_ERROR', `Failed to fetch from Pi: ${errorText}`, response.status);
+  }
+
+  return response.json();
+};

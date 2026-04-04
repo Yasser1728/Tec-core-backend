@@ -9,7 +9,7 @@ import {
 } from '@prisma/client/runtime/library';
 import { createAuditLog } from '../utils/audit';
 import { logInfo, logWarn, logError } from '../utils/logger';
-import { piApprovePayment, piCompletePayment, piCancelPayment, PiApiError } from '../services/payment.service';
+import { piApprovePayment, piCompletePayment, piCancelPayment, piGetPayment, PiApiError } from '../services/payment.service';
 import { env } from '../config/env';
 // ✅ حذفنا: import { creditTecWallet } from '../services/wallet.service';
 
@@ -855,126 +855,95 @@ export const resolveIncompletePayment = async (req: Request, res: Response): Pro
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid input data.',
-          details: errors.array().map((err: ValidationError) => ({
-            field: 'path' in err ? err.path : 'unknown',
-            message: err.msg,
-            value: 'value' in err ? err.value : undefined,
-          })),
-        },
-      });
+      res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input data.' } });
       return;
     }
 
     const { pi_payment_id } = req.body;
-    logInfo('Resolving incomplete payment', { pi_payment_id, requestId: req.requestId });
+    logInfo('Resolving payment via Pi Network Source of Truth', { pi_payment_id, requestId: req.requestId });
 
-    const payment = await prisma.payment.findUnique({ where: { pi_payment_id } });
+    if (!env.PI_API_KEY) {
+      res.status(503).json({ success: false, error: { code: 'SERVICE_NOT_CONFIGURED', message: 'Pi Network credentials not configured.' } });
+      return;
+    }
 
- if (!payment) {
-  if (env.PI_API_KEY) {
+    // 1. Fetch real status from Pi Network API (Source of Truth)
+    let piPaymentData;
     try {
-      await piCancelPayment(pi_payment_id);
-      logInfo('Pi payment cancelled directly on Pi Network', { pi_payment_id });
-    } catch (piErr) {
-      logWarn('Pi direct cancel failed', { pi_payment_id, error: (piErr as Error).message });
-    }
-  }
-  res.json({ success: true, data: { action: 'cancelled_on_pi' } });
-  return;
- }
-
-    const TERMINAL_STATUSES = ['completed', 'cancelled', 'failed'];
-    if (TERMINAL_STATUSES.includes(payment.status)) {
-      res.json({ success: true, data: { action: 'already_resolved' } });
+      piPaymentData = await piGetPayment(pi_payment_id);
+    } catch (error) {
+      logError('Failed to fetch from Pi', { pi_payment_id, error: (error as Error).message });
+      res.status(502).json({ success: false, error: { code: 'PI_API_ERROR', message: 'Could not reach Pi Network' } });
       return;
     }
 
-    if (payment.status === 'created') {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'cancelled', cancelled_at: new Date() },
-      });
-      void createAuditLog({
-        userId: payment.user_id,
-        paymentId: payment.id,
-        eventType: 'PAYMENT_CANCELLED',
-        metadata: { reason: 'resolve_incomplete', pi_payment_id },
-        ipAddress: getClientIp(req),
-        requestId: req.requestId,
-      });
-      res.json({ success: true, data: { action: 'cancelled' } });
-      return;
-    }
+    const piStatus = piPaymentData.status;
+    const txid = piPaymentData.transaction?.txid;
 
-    if (payment.status === 'approved') {
-      if (payment.payment_method === 'pi' && payment.pi_payment_id) {
-        if (env.PI_SANDBOX === 'true') {
-          logInfo('Sandbox mode: skipping Pi API complete for resolve-incomplete', { pi_payment_id });
-        } else {
-          if (!env.PI_API_KEY || !env.PI_APP_ID) {
-            res.status(503).json({
-              success: false,
-              error: { code: 'SERVICE_NOT_CONFIGURED', message: 'Pi Network credentials not configured.' },
-            });
-            return;
-          }
-          try {
-            await piCompletePayment(payment.pi_payment_id, undefined);
-          } catch (piErr) {
-            if (piErr instanceof PiApiError) {
-              await prisma.payment.update({
-                where: { id: payment.id },
-                data: {
-                  status: 'failed',
-                  failed_at: new Date(),
-                  metadata: { ...getMetadataObject(payment.metadata), failure_reason: piErr.message },
-                },
-              });
-              res.json({ success: true, data: { action: 'failed' } });
-              return;
-            }
-            throw piErr;
-          }
+    // 2. Fetch from local Database (if exists)
+    const localPayment = await prisma.payment.findUnique({ where: { pi_payment_id } });
+
+    // 3. Reconcile Logic Based on Pi Network Status
+
+    // CASE A: User paid, txid exists, but not completed on Pi (This causes the lock!)
+    if (piStatus.developer_approved && piStatus.transaction_verified && !piStatus.developer_completed) {
+      logInfo('Payment verified on Pi but not completed. Forcing complete!', { pi_payment_id, txid });
+
+      try {
+        await piCompletePayment(pi_payment_id, txid);
+
+        if (localPayment && localPayment.status !== 'completed') {
+          await prisma.payment.update({
+            where: { id: localPayment.id },
+            data: { status: 'completed', transaction_id: txid, completed_at: new Date() },
+          });
         }
+        res.json({ success: true, data: { action: 'completed' } });
+        return;
+      } catch (err) {
+        logError('Failed to force complete on Pi', { pi_payment_id, error: (err as Error).message });
+        res.status(500).json({ success: false, error: { code: 'COMPLETE_FAILED', message: 'Failed to complete on Pi' } });
+        return;
+      }
+    }
+
+    // CASE B: Payment already fully completed on Pi
+    if (piStatus.developer_completed) {
+      if (localPayment && localPayment.status !== 'completed') {
+        await prisma.payment.update({
+          where: { id: localPayment.id },
+          data: { status: 'completed', transaction_id: txid, completed_at: new Date() },
+        });
+      }
+      res.json({ success: true, data: { action: 'already_completed' } });
+      return;
+    }
+
+    // CASE C: Payment stuck in pending/created state or cancelled -> Must Cancel to release user
+    if (!piStatus.transaction_verified || piStatus.cancelled || piStatus.user_cancelled) {
+      logInfo('Payment stuck or cancelled. Forcing cancel on Pi.', { pi_payment_id });
+      try {
+        await piCancelPayment(pi_payment_id);
+      } catch (err) {
+        logWarn('Cancel failed (might be already cancelled)', { pi_payment_id, error: (err as Error).message });
       }
 
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'completed', completed_at: new Date() },
-      });
-      void createAuditLog({
-        userId: payment.user_id,
-        paymentId: payment.id,
-        eventType: 'PAYMENT_CONFIRMED',
-        metadata: { reason: 'resolve_incomplete', pi_payment_id },
-        ipAddress: getClientIp(req),
-        requestId: req.requestId,
-      });
-      res.json({ success: true, data: { action: 'completed' } });
+      if (localPayment && localPayment.status !== 'cancelled') {
+        await prisma.payment.update({
+          where: { id: localPayment.id },
+          data: { status: 'cancelled', cancelled_at: new Date() },
+        });
+      }
+      res.json({ success: true, data: { action: 'cancelled_on_pi' } });
       return;
     }
 
-    res.json({ success: true, data: { action: 'already_resolved' } });
+    // Fallback
+    res.json({ success: true, data: { action: 'no_action_needed' } });
+
   } catch (error) {
-    logError('ResolveIncompletePayment error', { error: (error as Error).message });
-
-    if (error instanceof PrismaClientInitializationError || error instanceof PrismaClientRustPanicError) {
-      res.status(503).json({
-        success: false,
-        error: { code: 'DATABASE_UNAVAILABLE', message: 'Database connection failed.' },
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to resolve incomplete payment' },
-    });
+    logError('Resolve error', { error: (error as Error).message });
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to resolve' } });
   }
 };
 
