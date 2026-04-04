@@ -7,14 +7,14 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# ✅ Copy shared package first
-COPY ../shared ./shared
+# ✅ Copy shared package from root context
+COPY shared ./shared
 RUN cd shared && npm install && npm run build
 
-COPY package*.json ./
+COPY tec-wallet-service/package*.json ./
 RUN npm install --ignore-scripts
 
-COPY . .
+COPY tec-wallet-service/ .
 
 RUN npx prisma generate
 RUN npm run build
@@ -28,17 +28,16 @@ ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# ✅ Copy built shared package
 COPY --from=builder /app/shared ./shared
 
-COPY package*.json ./
+COPY tec-wallet-service/package*.json ./
 RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma/client ./prisma/client
-COPY prisma/schema.prisma ./prisma/schema.prisma
-COPY prisma/migrations ./prisma/migrations
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
+COPY tec-wallet-service/prisma/schema.prisma ./prisma/schema.prisma
+COPY tec-wallet-service/prisma/migrations ./prisma/migrations
+COPY tec-wallet-service/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 ARG PORT=5002
