@@ -547,8 +547,8 @@ async function bootstrap() {
 
   const app    = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
-  
-app.useGlobalFilters(new GlobalExceptionFilter());
+
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map(s => s.trim()).filter(Boolean);
   app.enableCors({
@@ -565,10 +565,11 @@ app.useGlobalFilters(new GlobalExceptionFilter());
   expressApp.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('x-api-version', 'v1');
     res.setHeader('x-powered-by', 'TEC Gateway');
-    // ── Cache Middleware ──────────────────────────────────────
-  expressApp.use(cacheMiddleware);
     next();
   });
+
+  // ── Cache Middleware ──────────────────────────────────
+  expressApp.use(cacheMiddleware);
 
   // ── Swagger UI ────────────────────────────────────────
   expressApp.use(
@@ -581,9 +582,9 @@ app.useGlobalFilters(new GlobalExceptionFilter());
         .swagger-ui .topbar-wrapper .link { display: none; }
       `,
       swaggerOptions: {
-        persistAuthorization: true,
-        docExpansion:         'list',
-        filter:               true,
+        persistAuthorization:   true,
+        docExpansion:           'list',
+        filter:                 true,
         displayRequestDuration: true,
       },
     }),
@@ -595,13 +596,12 @@ app.useGlobalFilters(new GlobalExceptionFilter());
     res.send(swaggerSpec);
   });
 
-// ── Cache Stats ───────────────────────────────────────────
+  // ── Cache Stats ───────────────────────────────────────
   expressApp.get('/api/cache/stats', (_req: Request, res: Response) => {
     res.json({ success: true, data: getCacheStats() });
-  
-   }); 
-  
-  // ── JWT Auth — validate before proxy ─────────────────
+  });
+
+  // ── JWT Auth ──────────────────────────────────────────
   expressApp.use(jwtAuthMiddleware);
 
   // ── Rate Limiting ─────────────────────────────────────
@@ -610,12 +610,9 @@ app.useGlobalFilters(new GlobalExceptionFilter());
   expressApp.use('/api/v1/payment', paymentRateLimiter);
   expressApp.use('/api/payment',    paymentRateLimiter);
 
-  // ✅ Global rate limiter — يستثني health/ready/docs
   expressApp.use((req: Request, res: Response, next: NextFunction) => {
- const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json', '/api/cache/stats'];   
-    if (excluded.some(path => req.path.startsWith(path))) {
-      return next();
-    }
+    const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json', '/api/cache/stats'];
+    if (excluded.some(path => req.path.startsWith(path))) return next();
     return rateLimiter(req, res, next);
   });
 
@@ -643,19 +640,18 @@ app.useGlobalFilters(new GlobalExceptionFilter());
   });
 
   // ── 404 ───────────────────────────────────────────────
- expressApp.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('x-api-version', 'v1');
-    res.setHeader('x-powered-by', 'TEC Gateway');
-    next();
+  expressApp.use('*', (_req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
+    });
   });
-
-  // ── Cache Middleware ──────────────────────────────────────
-  expressApp.use(cacheMiddleware); 
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`🚀 TEC Gateway v1 running on port ${port}`);
   logger.log(`📚 API Docs: http://localhost:${port}/api/docs`);
+  logger.log(`⚡ Cache: enabled`);
   logger.log(`📡 New routes:    /api/v1/{service}`);
   logger.log(`🔄 Legacy routes: /api/{service} (backward compat)`);
 }
