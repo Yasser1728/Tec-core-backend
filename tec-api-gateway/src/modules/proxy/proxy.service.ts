@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Application, Request, Response } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ProxyService {
@@ -75,10 +76,7 @@ export class ProxyService {
     Object.entries(this.services).forEach(([key, options]) => {
       const { aliases, ...proxyOptions } = options;
 
-      // ── v1 routes (new) ──────────────────────────────
       this.registerSingleProxy(app, key, proxyOptions, true);
-
-      // ── legacy routes (backward compat) ─────────────
       this.registerSingleProxy(app, key, proxyOptions, false);
 
       if (aliases && aliases.length > 0) {
@@ -131,19 +129,21 @@ export class ProxyService {
           if (auth)   proxyReq.setHeader('Authorization', auth);
           if (secret) proxyReq.setHeader('x-internal-key', secret);
 
-          // ── API version header للـ downstream services
+          // ✅ API version header
           proxyReq.setHeader('x-api-version', versioned ? 'v1' : 'legacy');
 
-          const requestId = req.headers['x-request-id'];
-          if (requestId) proxyReq.setHeader('x-request-id', String(requestId));
+          // ✅ Generate requestId لو مش موجود — distributed tracing
+          const requestId = (req.headers['x-request-id'] as string) ?? randomUUID();
+          req.headers['x-request-id'] = requestId;
+          proxyReq.setHeader('x-request-id', requestId);
 
           this.logger.debug(
-            `[${routeKey}] ${req.method} ${req.url} → ${target} (${versioned ? 'v1' : 'legacy'})`
+            `[${routeKey}] ${req.method} ${req.url} → ${target} [${requestId}] (${versioned ? 'v1' : 'legacy'})`
           );
         },
-        onProxyRes: (_proxyRes, _req: Request) => {
+        onProxyRes: (_proxyRes, req: Request) => {
           this.logger.log(
-            `[${routeKey}] Response: ${_proxyRes.statusCode}`
+            `[${routeKey}] Response: ${_proxyRes.statusCode} [${req.headers['x-request-id']}]`
           );
         },
         onError: (err, _req: Request, res: Response) => {
@@ -167,7 +167,7 @@ export class ProxyService {
   private getTotalRoutes(): number {
     return Object.entries(this.services).reduce((count, [, options]) => {
       const aliases = (options as { aliases?: string[] }).aliases?.length || 0;
-      return count + (1 + aliases) * 2; // v1 + legacy لكل route
+      return count + (1 + aliases) * 2;
     }, 0);
   }
-}
+          }
