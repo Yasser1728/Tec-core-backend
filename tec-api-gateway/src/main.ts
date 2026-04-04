@@ -1,3 +1,4 @@
+import { cacheMiddleware, getCacheStats } from './middleware/cache.middleware';
 import { NestFactory }                  from '@nestjs/core';
 import { AppModule }                    from './app.module';
 import { Logger }                       from '@nestjs/common';
@@ -564,6 +565,8 @@ app.useGlobalFilters(new GlobalExceptionFilter());
   expressApp.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('x-api-version', 'v1');
     res.setHeader('x-powered-by', 'TEC Gateway');
+    // ── Cache Middleware ──────────────────────────────────────
+  expressApp.use(cacheMiddleware);
     next();
   });
 
@@ -592,6 +595,12 @@ app.useGlobalFilters(new GlobalExceptionFilter());
     res.send(swaggerSpec);
   });
 
+// ── Cache Stats ───────────────────────────────────────────
+  expressApp.get('/api/cache/stats', (_req: Request, res: Response) => {
+    res.json({ success: true, data: getCacheStats() });
+  
+   }); 
+  
   // ── JWT Auth — validate before proxy ─────────────────
   expressApp.use(jwtAuthMiddleware);
 
@@ -603,7 +612,7 @@ app.useGlobalFilters(new GlobalExceptionFilter());
 
   // ✅ Global rate limiter — يستثني health/ready/docs
   expressApp.use((req: Request, res: Response, next: NextFunction) => {
-    const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json'];
+ const excluded = ['/health', '/ready', '/api/docs', '/api/docs.json', '/api/cache/stats'];   
     if (excluded.some(path => req.path.startsWith(path))) {
       return next();
     }
