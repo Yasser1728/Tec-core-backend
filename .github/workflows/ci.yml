@@ -104,20 +104,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ✅ root context — بيشوف shared/
-          - service: tec-payment-service
-            image:   tec-payment-service
-            context: .
-          - service: tec-wallet-service
-            image:   tec-wallet-service
-            context: .
-          # ✅ service context — مش محتاجين shared/
           - service: tec-api-gateway
             image:   tec-api-gateway
             context: tec-api-gateway
           - service: tec-auth-service
             image:   tec-auth-service
             context: tec-auth-service
+          - service: tec-payment-service
+            image:   tec-payment-service
+            context: tec-payment-service
+          - service: tec-wallet-service
+            image:   tec-wallet-service
+            context: tec-wallet-service
           - service: tec-notification-service
             image:   tec-notification-service
             context: tec-notification-service
