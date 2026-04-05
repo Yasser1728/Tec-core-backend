@@ -597,9 +597,20 @@ async function bootstrap() {
   });
 
   // ── Cache Stats ───────────────────────────────────────
-  expressApp.get('/api/cache/stats', (_req: Request, res: Response) => {
-    res.json({ success: true, data: getCacheStats() });
-  });
+  expressApp.get('/api/cache/stats', (req: Request, res: Response) => {
+  const internalKey = req.headers['x-internal-key'];
+  const secret      = process.env.INTERNAL_SECRET;
+
+  if (!secret || internalKey !== secret) {
+    res.status(403).json({
+      success: false,
+      error: { code: 'FORBIDDEN', message: 'Internal access only' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: getCacheStats() });
+});
 
   // ── JWT Auth ──────────────────────────────────────────
   expressApp.use(jwtAuthMiddleware);
