@@ -1,30 +1,28 @@
+# Stage 1: Build
 FROM node:20-alpine AS builder
-
-RUN apk add --no-cache openssl
-
 WORKDIR /app
 
 COPY package*.json ./
-COPY prisma ./prisma/
 RUN npm install
 
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS production
-
-RUN apk add --no-cache openssl
-
+# Stage 2: Production
+FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-COPY prisma ./prisma/
-
-RUN npm install --omit=dev && npx prisma generate
+RUN npm install --only=production && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
-# ✅ H3 Fix — الـ port الصح 5001
-EXPOSE 5001
+ARG PORT=8080
+ENV PORT=${PORT}
+EXPOSE ${PORT}
 
-CMD ["node", "dist/main"]
+# ✅ H4 Fix — healthcheck على /health بتاع الـ Gateway نفسه
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + process.env.PORT + '/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+
+CMD ["node", "dist/main.js"]
