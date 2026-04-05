@@ -9,7 +9,6 @@ COPY prisma ./prisma/
 RUN npm install
 
 COPY . .
-
 RUN npm run build
 
 FROM node:20-alpine AS production
@@ -25,6 +24,7 @@ RUN npm install --omit=dev && npx prisma generate
 
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 3001
+# ✅ H3 Fix — الـ port الصح 5001
+EXPOSE 5001
 
 CMD ["node", "dist/main"]
