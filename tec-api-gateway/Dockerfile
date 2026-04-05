@@ -1,38 +1,30 @@
-# Stage 1: Build
 FROM node:20-alpine AS builder
+
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
-# Copy only package files first to optimize caching
 COPY package*.json ./
-
-# Install dependencies (npm ci can cause issues, using install)
+COPY prisma ./prisma/
 RUN npm install
 
-# Copy rest of the files and build the project
 COPY . .
 RUN npm run build
 
-# Stage 2: Production
-FROM node:20-alpine
+FROM node:20-alpine AS production
+
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
+COPY prisma ./prisma/
 
-# Install production dependencies only
-RUN npm install --only=production && npm cache clean --force
+RUN npm install --omit=dev && npx prisma generate
 
-# Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Set port
-ARG PORT=5000
-ENV PORT=${PORT}
-EXPOSE ${PORT}
+# ✅ H3 Fix — الـ port الصح 5001
+EXPOSE 5001
 
-# Healthcheck for NestJS app
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:' + process.env.PORT + '/api/assets/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
-
-# Run the NestJS main.js
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/main"]
