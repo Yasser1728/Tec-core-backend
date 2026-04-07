@@ -1,10 +1,16 @@
 import Redis from 'ioredis';
 import { AnalyticsService } from './analytics.service';
 
+// ── Graceful shutdown flag ─────────────────────────────────
+let isShuttingDown = false;
+
 const createConsumer = (redisUrl: string): Redis =>
   new Redis(redisUrl, {
     maxRetriesPerRequest: null,
-    retryStrategy: (times) => Math.min(times * 100, 3000),
+    retryStrategy: (times) => {
+      if (isShuttingDown) return null;
+      return Math.min(times * 100, 3000);
+    },
     enableOfflineQueue: true,
   });
 
@@ -21,16 +27,16 @@ const ensureGroup = async (
 };
 
 const consumeStream = async (
-  client: Redis,
-  stream: string,
-  group: string,
+  client:   Redis,
+  stream:   string,
+  group:    string,
   consumer: string,
-  handler: (payload: Record<string, unknown>) => Promise<void>,
+  handler:  (payload: Record<string, unknown>) => Promise<void>,
 ): Promise<void> => {
   await ensureGroup(client, stream, group);
   console.log(`[AnalyticsConsumer] Listening for ${stream}...`);
 
-  while (true) {
+  while (!isShuttingDown) {
     try {
       const results = await client.xreadgroup(
         'GROUP', group, consumer,
@@ -56,6 +62,7 @@ const consumeStream = async (
         }
       }
     } catch (err: any) {
+      if (isShuttingDown) break;
       if (err.message?.includes('NOGROUP')) {
         await ensureGroup(client, stream, group);
       } else {
@@ -75,52 +82,56 @@ export const startAnalyticsConsumers = async (
     return;
   }
 
-  const GROUP = 'analytics-service';
+  const GROUP   = 'analytics-service';
+  const client1 = createConsumer(redisUrl);
+  const client2 = createConsumer(redisUrl);
+
+  // ── Graceful shutdown handler ──────────────────────────
+  const shutdown = async (signal: string) => {
+    console.log(`[AnalyticsConsumer] ${signal} received — shutting down...`);
+    isShuttingDown = true;
+    await Promise.all([
+      client1.quit().catch(() => client1.disconnect()),
+      client2.quit().catch(() => client2.disconnect()),
+    ]);
+    console.log('[AnalyticsConsumer] ✅ Redis connections closed');
+  };
+
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT',  () => shutdown('SIGINT'));
 
   // ✅ payment.completed
   consumeStream(
-    createConsumer(redisUrl),
+    client1,
     'payment.completed',
     GROUP,
     'analytics-consumer-1',
     async (payload) => {
       await service.trackEvent({
-        type: 'payment.completed',
+        type:    'payment.completed',
         payload,
-        userId: payload.userId as string,
+        userId:  payload.userId as string,
       });
-      await service.updateDailyMetric({
-        date: new Date(),
-        field: 'total_payments',
-        value: 1,
-      });
-      await service.updateDailyMetric({
-        date: new Date(),
-        field: 'total_volume',
-        value: payload.amount as number,
-      });
-      console.log(`[AnalyticsConsumer] ✅ payment.completed tracked`);
+      await service.updateDailyMetric({ date: new Date(), field: 'total_payments', value: 1 });
+      await service.updateDailyMetric({ date: new Date(), field: 'total_volume',   value: payload.amount as number });
+      console.log('[AnalyticsConsumer] ✅ payment.completed tracked');
     },
   ).catch(err => console.error('[AnalyticsConsumer] payment.completed fatal:', err.message));
 
   // ✅ user.created
   consumeStream(
-    createConsumer(redisUrl),
+    client2,
     'user.created',
     GROUP,
     'analytics-consumer-2',
     async (payload) => {
       await service.trackEvent({
-        type: 'user.created',
+        type:   'user.created',
         payload,
         userId: payload.userId as string,
       });
-      await service.updateDailyMetric({
-        date: new Date(),
-        field: 'new_users',
-        value: 1,
-      });
-      console.log(`[AnalyticsConsumer] ✅ user.created tracked`);
+      await service.updateDailyMetric({ date: new Date(), field: 'new_users', value: 1 });
+      console.log('[AnalyticsConsumer] ✅ user.created tracked');
     },
   ).catch(err => console.error('[AnalyticsConsumer] user.created fatal:', err.message));
 
