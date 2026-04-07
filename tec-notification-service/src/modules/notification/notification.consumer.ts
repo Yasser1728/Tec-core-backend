@@ -1,13 +1,18 @@
 import Redis from 'ioredis';
 import { NotificationService } from './notification.service';
 
-const createConsumer = (redisUrl: string): Redis => {
-  return new Redis(redisUrl, {
+// ── Graceful shutdown flag ─────────────────────────────────
+let isShuttingDown = false;
+
+const createConsumer = (redisUrl: string): Redis =>
+  new Redis(redisUrl, {
     maxRetriesPerRequest: null,
-    retryStrategy: (times) => Math.min(times * 100, 3000),
+    retryStrategy: (times) => {
+      if (isShuttingDown) return null;
+      return Math.min(times * 100, 3000);
+    },
     enableOfflineQueue: true,
   });
-};
 
 const ensureGroup = async (
   client: Redis,
@@ -26,14 +31,14 @@ const consumePaymentCompleted = async (
   client: Redis,
   service: NotificationService,
 ): Promise<void> => {
-  const STREAM = 'payment.completed';
-  const GROUP = 'notification-service';
+  const STREAM   = 'payment.completed';
+  const GROUP    = 'notification-service';
   const CONSUMER = 'notification-consumer-1';
 
   await ensureGroup(client, STREAM, GROUP);
   console.log('[NotificationConsumer] Listening for payment.completed...');
 
-  while (true) {
+  while (!isShuttingDown) {
     try {
       const results = await client.xreadgroup(
         'GROUP', GROUP, CONSUMER,
@@ -54,26 +59,26 @@ const consumePaymentCompleted = async (
             const payload = JSON.parse(fields[dataIndex + 1]);
 
             await service.create({
-              userId: payload.userId,
-              type: 'PAYMENT',
-              title: '✅ Payment Successful',
+              userId:  payload.userId,
+              type:    'PAYMENT',
+              title:   '✅ Payment Successful',
               message: `Your payment of ${payload.amount} ${payload.currency} was completed successfully.`,
               metadata: {
                 paymentId: payload.paymentId,
-                amount: payload.amount,
-                currency: payload.currency,
+                amount:    payload.amount,
+                currency:  payload.currency,
               },
             });
 
             await client.xack(STREAM, GROUP, messageId);
-            console.log(`[NotificationConsumer] ✅ Payment notification created for user ${payload.userId}`);
-
+            console.log(`[NotificationConsumer] ✅ Payment notification → ${payload.userId}`);
           } catch (err) {
             console.error(`[NotificationConsumer] Handler failed ${messageId}:`, err);
           }
         }
       }
     } catch (err: any) {
+      if (isShuttingDown) break;
       if (err.message?.includes('NOGROUP')) {
         await ensureGroup(client, STREAM, GROUP);
       } else {
@@ -89,14 +94,14 @@ const consumeUserCreated = async (
   client: Redis,
   service: NotificationService,
 ): Promise<void> => {
-  const STREAM = 'user.created';
-  const GROUP = 'notification-service';
+  const STREAM   = 'user.created';
+  const GROUP    = 'notification-service';
   const CONSUMER = 'notification-consumer-2';
 
   await ensureGroup(client, STREAM, GROUP);
   console.log('[NotificationConsumer] Listening for user.created...');
 
-  while (true) {
+  while (!isShuttingDown) {
     try {
       const results = await client.xreadgroup(
         'GROUP', GROUP, CONSUMER,
@@ -117,22 +122,22 @@ const consumeUserCreated = async (
             const payload = JSON.parse(fields[dataIndex + 1]);
 
             await service.create({
-              userId: payload.userId,
-              type: 'SYSTEM',
-              title: '👋 Welcome to TEC!',
-              message: `Welcome ${payload.username}! Your account has been created successfully.`,
+              userId:   payload.userId,
+              type:     'SYSTEM',
+              title:    '👋 Welcome to TEC!',
+              message:  `Welcome ${payload.username}! Your account has been created successfully.`,
               metadata: { username: payload.username },
             });
 
             await client.xack(STREAM, GROUP, messageId);
-            console.log(`[NotificationConsumer] ✅ Welcome notification for ${payload.username}`);
-
+            console.log(`[NotificationConsumer] ✅ Welcome notification → ${payload.username}`);
           } catch (err) {
             console.error(`[NotificationConsumer] Handler failed ${messageId}:`, err);
           }
         }
       }
     } catch (err: any) {
+      if (isShuttingDown) break;
       if (err.message?.includes('NOGROUP')) {
         await ensureGroup(client, STREAM, GROUP);
       } else {
@@ -143,7 +148,7 @@ const consumeUserCreated = async (
   }
 };
 
-// ✅ Start all consumers
+// ✅ Start all consumers + graceful shutdown
 export const startNotificationConsumers = async (
   service: NotificationService,
 ): Promise<void> => {
@@ -153,9 +158,22 @@ export const startNotificationConsumers = async (
     return;
   }
 
-  // Consumer منفصل لكل stream
   const client1 = createConsumer(redisUrl);
   const client2 = createConsumer(redisUrl);
+
+  // ── Graceful shutdown handler ──────────────────────────
+  const shutdown = async (signal: string) => {
+    console.log(`[NotificationConsumer] ${signal} received — shutting down...`);
+    isShuttingDown = true;
+    await Promise.all([
+      client1.quit().catch(() => client1.disconnect()),
+      client2.quit().catch(() => client2.disconnect()),
+    ]);
+    console.log('[NotificationConsumer] ✅ Redis connections closed');
+  };
+
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT',  () => shutdown('SIGINT'));
 
   consumePaymentCompleted(client1, service).catch((err) =>
     console.error('[NotificationConsumer] payment.completed fatal:', err.message)
@@ -164,4 +182,6 @@ export const startNotificationConsumers = async (
   consumeUserCreated(client2, service).catch((err) =>
     console.error('[NotificationConsumer] user.created fatal:', err.message)
   );
+
+  console.log('✅ Notification Consumers started');
 };
