@@ -77,7 +77,7 @@ export class AuthService {
     try {
       const { data } = await axios.get(`${this.PI_API_URL}/v2/me`, {
         headers: { Authorization: `Bearer ${accessToken}` },
-        timeout: 10000,
+        timeout: 15000,
       });
       if (!data.uid || !data.username)
         throw new UnauthorizedException('Invalid Pi response');
