@@ -57,7 +57,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    logger.error('JWT_SECRET environment variable is not set');
+    logger.error('JWT_SECRET not set');
     res.status(500).json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
@@ -74,7 +74,6 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     const userId = decoded.sub ?? decoded.id ?? decoded.userId;
 
     if (!userId) {
-      logger.warn('JWT rejected: missing user identifier in payload');
       res.status(401).json({
         success: false,
         error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
