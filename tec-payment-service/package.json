@@ -16,6 +16,7 @@
   "dependencies": {
     "@prisma/client":     "^5.22.0",
     "@sentry/node":       "^10.39.0",
+    "@tec/shared":        "file:../shared",
     "cors":               "^2.8.6",
     "dotenv":             "^16.6.1",
     "express":            "^4.22.1",
