@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build & link @tec/shared
+      - name: Build & link @yasser172/tec-shared
         working-directory: shared
         run: |
           npm install --include=dev
@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
         run: |
-          npm link @tec/shared
+          npm link @yasser172/tec-shared
           npm install --legacy-peer-deps
 
       - name: Lint
@@ -89,7 +89,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build & link @tec/shared
+      - name: Build & link @yasser172/tec-shared
         working-directory: shared
         run: |
           npm install --include=dev
@@ -99,7 +99,7 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
         run: |
-          npm link @tec/shared
+          npm link @yasser172/tec-shared
           npm install --legacy-peer-deps
 
       - name: Run coverage check
