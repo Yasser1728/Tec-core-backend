@@ -62,6 +62,7 @@ jobs:
 
       - name: Download shared dist
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: shared-dist
           path: shared/dist/
@@ -110,6 +111,7 @@ jobs:
 
       - name: Download shared dist
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: shared-dist
           path: shared/dist/
