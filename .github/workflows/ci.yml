@@ -11,7 +11,6 @@ permissions:
   id-token: write
 
 jobs:
-  # ── Build shared package first ──────────────────────────
   build-shared:
     name: Build @tec/shared
     runs-on: ubuntu-latest
@@ -29,7 +28,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: shared-dist
-          path: shared/dist/
+          path: |
+            shared/dist/
+            shared/package.json
           retention-days: 1
 
   lint-and-test:
@@ -60,12 +61,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Download shared dist
+      - name: Download & restore shared dist
         uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: shared-dist
-          path: shared/dist/
+          path: shared/
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -109,12 +109,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Download shared dist
+      - name: Download & restore shared dist
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: shared-dist
-          path: shared/dist/
+          path: shared/
 
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
