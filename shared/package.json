@@ -1,7 +1,7 @@
 {
   "name": "@yasser172/tec-shared",
   "version": "1.0.0",
-  "description": "TEC shared utilities — internal auth, JWT middleware, event bus",
+  "description": "TEC shared utilities",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
