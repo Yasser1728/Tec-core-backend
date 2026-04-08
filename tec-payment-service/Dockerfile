@@ -1,7 +1,7 @@
 # Multi-stage build for TEC Payment Service
 # Build context: repo root (docker build -f tec-payment-service/Dockerfile .)
 
-# ── Stage 1: Build ────────────────────────────────────────
+# ── Stage 1: Build ──���─────────────────────────────────────
 FROM node:20-slim AS builder
 
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── Build shared first ────────────────────────────────────
 COPY shared/package*.json ./shared/
-RUN cd shared && npm install --ignore-scripts
+RUN cd shared && npm install --include=dev --ignore-scripts
 
 COPY shared/ ./shared/
 RUN cd shared && npm run build
