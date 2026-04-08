@@ -1,4 +1,4 @@
-import { timingSafeEqual }               from 'crypto';
+import { timingSafeEqual }                from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 
 export const validateInternalKey = (
