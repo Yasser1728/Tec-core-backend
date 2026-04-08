@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { logger } from '../logger';
+import jwt  from 'jsonwebtoken';
+import pino from 'pino';
+
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  base:  { service: 'jwt-middleware' },
+});
 
 interface TokenPayload {
   sub?:         string;
@@ -42,7 +47,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
   const header = decodeHeader(token);
   if (!header || header.alg !== 'HS256') {
-    logger.warn('JWT rejected: unsupported algorithm', { alg: header?.alg });
+    logger.warn({ alg: header?.alg }, 'JWT rejected: unsupported algorithm');
     res.status(401).json({
       success: false,
       error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
@@ -82,7 +87,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     next();
 
   } catch (error) {
-    logger.warn('JWT verification failed', { message: (error as Error).message });
+    logger.warn({ message: (error as Error).message }, 'JWT verification failed');
     res.status(401).json({
       success: false,
       error: { code: 'AUTHENTICATION_ERROR', message: 'Invalid or expired token' },
