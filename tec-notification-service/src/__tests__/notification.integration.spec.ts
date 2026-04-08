@@ -1,7 +1,7 @@
 import { Test, TestingModule }   from '@nestjs/testing';
 import { INestApplication }      from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import * as request              from 'supertest';
+import request from 'supertest';
 import { NotificationController } from '../modules/notification/notification.controller';
 import { NotificationService }    from '../modules/notification/notification.service';
 
