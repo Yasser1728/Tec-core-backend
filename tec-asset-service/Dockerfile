@@ -1,23 +1,13 @@
-FROM node:22-alpine
+#!/bin/sh
+set -e
 
-WORKDIR /app
+echo "Resolving any failed migrations..."
+npx prisma migrate resolve \
+  --rolled-back 20260303000000_add_payment_reconciled_event \
+  2>/dev/null || true
 
-RUN apk add --no-cache openssl
+echo "Running Prisma migrations..."
+npx prisma migrate deploy
 
-COPY package*.json ./
-COPY prisma ./prisma/
-
-RUN npm install
-
-RUN npx prisma generate --schema=./prisma/schema.prisma
-
-COPY . .
-
-RUN npm run build && ls -la dist/
-
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-
-EXPOSE 5004
-
-ENTRYPOINT ["./docker-entrypoint.sh"]
+echo "Starting Payment Service..."
+exec node dist/server.js
