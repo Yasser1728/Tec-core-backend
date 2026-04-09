@@ -118,20 +118,28 @@ jobs:
         include:
           - service: tec-api-gateway
             image:   tec-api-gateway
+            context: tec-api-gateway
           - service: tec-auth-service
             image:   tec-auth-service
+            context: tec-auth-service
           - service: tec-payment-service
             image:   tec-payment-service
+            context: .
           - service: tec-wallet-service
             image:   tec-wallet-service
+            context: .
           - service: tec-notification-service
             image:   tec-notification-service
+            context: tec-notification-service
           - service: tec-kyc-service
             image:   tec-kyc-service
+            context: tec-kyc-service
           - service: tec-commerce-service
             image:   tec-commerce-service
+            context: tec-commerce-service
           - service: tec-asset-service
             image:   tec-asset-service
+            context: tec-asset-service
 
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +150,7 @@ jobs:
       - name: Build Docker image (no push)
         uses: docker/build-push-action@v5
         with:
-          context:    .
+          context:    ${{ matrix.context }}
           file:       ${{ matrix.service }}/Dockerfile
           push:       false
           tags:       ${{ matrix.image }}:${{ github.sha }}
