@@ -1,11 +1,17 @@
 import { NestFactory }      from '@nestjs/core';
 import { ValidationPipe }   from '@nestjs/common';
 import helmet               from 'helmet';
+import pino                 from 'pino';
 import { AppModule }        from './app.module';
+
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  base:  { service: 'auth-service' },
+});
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
-    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    logger.fatal('FATAL: INTERNAL_SECRET must be configured in production');
     process.exit(1);
   }
 
@@ -46,7 +52,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 5001;
   await app.listen(port);
-  console.log(`TEC Auth Service running on port ${port}`);
+  logger.info({ port }, 'TEC Auth Service running');
 }
 
 bootstrap();
