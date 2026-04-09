@@ -1,13 +1,23 @@
-#!/bin/sh
-set -e
+FROM node:22-alpine
 
-echo "Resolving any failed migrations..."
-npx prisma migrate resolve \
-  --rolled-back 20260303000000_add_payment_reconciled_event \
-  2>/dev/null || true
+WORKDIR /app
 
-echo "Running Prisma migrations..."
-npx prisma migrate deploy
+RUN apk add --no-cache openssl
 
-echo "Starting Payment Service..."
-exec node dist/server.js
+COPY package*.json ./
+COPY prisma ./prisma/
+
+RUN npm install
+
+RUN npx prisma generate --schema=./prisma/schema.prisma
+
+COPY . .
+
+RUN npm run build && ls -la dist/
+
+EXPOSE 5009
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:5009/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
