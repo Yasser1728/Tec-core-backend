@@ -3,20 +3,11 @@ import { ConflictException, InternalServerErrorException } from '@nestjs/common'
 import { AssetService }         from './asset.service';
 import { PrismaService }        from '../prisma/prisma.service';
 
-// تعريف الـ enum محلياً بدل الاستيراد من prisma/client
-const AssetCategory = {
-  DIGITAL_ASSET: 'DIGITAL_ASSET',
-  DOMAIN:        'DOMAIN',
-  REAL_ESTATE:   'REAL_ESTATE',
-} as const;
-type AssetCategory = typeof AssetCategory[keyof typeof AssetCategory];
-
-// ── Mock Data ─────────────────────────────────────────────────
 const mockAsset = {
   id:            'asset-uuid-1',
   transactionId: 'tx-uuid-1',
   ownerId:       'user-uuid-1',
-  category:      AssetCategory.DIGITAL_ASSET,
+  category:      'DIGITAL_ASSET',
   slug:          'my-asset-slug',
   metadata:      {},
   createdAt:     new Date(),
@@ -27,12 +18,11 @@ const mockAsset = {
 const createDto = {
   transactionId: 'tx-uuid-1',
   userId:        'user-uuid-1',
-  category:      AssetCategory.DIGITAL_ASSET,
+  category:      'DIGITAL_ASSET' as any,
   slug:          'my-asset-slug',
   metadata:      {},
 };
 
-// ── Prisma Transaction Mock ───────────────────────────────────
 const txMock = {
   asset: {
     findUnique: jest.fn(),
@@ -48,7 +38,6 @@ const prismaMock = {
   $transaction: jest.fn(),
 };
 
-// ── Tests ─────────────────────────────────────────────────────
 describe('AssetService', () => {
   let service: AssetService;
 
