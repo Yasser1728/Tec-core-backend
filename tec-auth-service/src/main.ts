@@ -13,14 +13,12 @@ async function bootstrap() {
 
   app.use(helmet());
 
-  // ✅ C2 Fix — CORS allowlist بدل wildcard
   const allowedOrigins = [
     'https://tec-app.vercel.app',
     'https://api-gateway-production-6a68.up.railway.app',
     ...(process.env.CORS_ORIGIN?.split(',').map(s => s.trim()).filter(Boolean) ?? []),
   ];
 
-  // ✅ في development — اسمح بـ localhost
   if (process.env.NODE_ENV !== 'production') {
     allowedOrigins.push('http://localhost:3000');
     allowedOrigins.push('http://localhost:8080');
@@ -28,9 +26,8 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // ✅ لو مفيش origin (inter-service calls) → اسمح
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`CORS: origin ${origin} not allowed`), false);
