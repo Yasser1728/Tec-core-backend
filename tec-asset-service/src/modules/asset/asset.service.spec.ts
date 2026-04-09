@@ -2,13 +2,14 @@ import { Test, TestingModule }  from '@nestjs/testing';
 import { ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { AssetService }         from './asset.service';
 import { PrismaService }        from '../prisma/prisma.service';
+import { AssetCategory }        from '../../prisma/client';
 
 // ── Mock Data ─────────────────────────────────────────────────
 const mockAsset = {
   id:            'asset-uuid-1',
   transactionId: 'tx-uuid-1',
   ownerId:       'user-uuid-1',
-  category:      'NFT',
+  category:      AssetCategory.DIGITAL_ASSET,
   slug:          'my-asset-slug',
   metadata:      {},
   createdAt:     new Date(),
@@ -19,7 +20,7 @@ const mockAsset = {
 const createDto = {
   transactionId: 'tx-uuid-1',
   userId:        'user-uuid-1',
-  category:      'NFT',
+  category:      AssetCategory.DIGITAL_ASSET,
   slug:          'my-asset-slug',
   metadata:      {},
 };
@@ -60,8 +61,8 @@ describe('AssetService', () => {
   describe('provisionAsset', () => {
     it('creates asset successfully', async () => {
       prismaMock.$transaction.mockImplementation(async (fn: Function) => {
-        txMock.asset.findUnique.mockResolvedValueOnce(null); // no existing tx
-        txMock.asset.findUnique.mockResolvedValueOnce(null); // no existing slug
+        txMock.asset.findUnique.mockResolvedValueOnce(null);
+        txMock.asset.findUnique.mockResolvedValueOnce(null);
         txMock.asset.create.mockResolvedValue(mockAsset);
         return fn(txMock);
       });
@@ -73,7 +74,7 @@ describe('AssetService', () => {
 
     it('throws ConflictException if transaction already exists', async () => {
       prismaMock.$transaction.mockImplementation(async (fn: Function) => {
-        txMock.asset.findUnique.mockResolvedValueOnce(mockAsset); // tx exists
+        txMock.asset.findUnique.mockResolvedValueOnce(mockAsset);
         return fn(txMock);
       });
 
@@ -83,8 +84,8 @@ describe('AssetService', () => {
 
     it('throws ConflictException if slug already exists', async () => {
       prismaMock.$transaction.mockImplementation(async (fn: Function) => {
-        txMock.asset.findUnique.mockResolvedValueOnce(null);    // no tx
-        txMock.asset.findUnique.mockResolvedValueOnce(mockAsset); // slug exists
+        txMock.asset.findUnique.mockResolvedValueOnce(null);
+        txMock.asset.findUnique.mockResolvedValueOnce(mockAsset);
         return fn(txMock);
       });
 
