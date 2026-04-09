@@ -7,7 +7,6 @@ import {
 } from './event-bus';
 import { WalletService } from './wallet/wallet.service';
 
-// ── Type للـ transaction client ──────────────────────────────
 type PrismaTx = Prisma.TransactionClient;
 
 const prisma        = new PrismaClient();
@@ -27,6 +26,22 @@ const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<voi
 
 export const startWalletEventConsumer = async (): Promise<void> => {
   const subscriber = createSubscriber();
+
+  // ── Graceful shutdown ──────────────────────────────────
+  const shutdown = async (signal: string) => {
+    console.log(`[WalletConsumer] ${signal} received — shutting down...`);
+    try {
+      await subscriber.quit();
+    } catch {
+      subscriber.disconnect();
+    }
+    await prisma.$disconnect();
+    console.log('[WalletConsumer] ✅ Redis + Prisma connections closed');
+    process.exit(0);
+  };
+
+  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+  process.once('SIGINT',  () => { void shutdown('SIGINT'); });
 
   console.log('[WalletConsumer] Starting — listening for payment.completed...');
 
