@@ -53,12 +53,32 @@ app.use(cors({
   exposedHeaders: ['X-Request-Id'],
 }));
 
-app.use(express.json());
+// ── Webhook paths (skip internal auth + use raw body) ─────
+const WEBHOOK_PATHS = new Set([
+  '/webhook/incomplete',
+  '/payments/webhook/incomplete',
+  '/api/payments/webhook/incomplete',
+  '/payments/resolve-incomplete',
+  '/api/payments/resolve-incomplete',
+]);
+
+// Raw body capture for webhook signature verification
+// Must run BEFORE express.json() on webhook routes
+app.use((req, res, next) => {
+  if (WEBHOOK_PATHS.has(req.path)) {
+    express.raw({ type: '*/*' })(req, res, (err) => {
+      if (err) return next(err);
+      (req as express.Request & { rawBody?: Buffer }).rawBody = req.body as Buffer;
+      express.json()(req, res, next);
+    });
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
 app.use(express.urlencoded({ extended: true }));
 
 // ── Request ID + Metrics ──────────────────────────────────
-// requestIdMiddleware يحقن requestId في AsyncLocalStorage
-// → كل log في نفس الـ request هيطلع فيه requestId تلقائياً
 app.use(requestIdMiddleware);
 app.use(metricsMiddleware);
 
@@ -120,15 +140,7 @@ app.get('/metrics', async (_req, res) => {
   res.end(await register.metrics());
 });
 
-// ── Internal Auth (skip webhooks) ─────────────────────────
-const WEBHOOK_PATHS = new Set([
-  '/webhook/incomplete',
-  '/payments/webhook/incomplete',
-  '/api/payments/webhook/incomplete',
-  '/payments/resolve-incomplete',
-  '/api/payments/resolve-incomplete',
-]);
-
+// ── Internal Auth (skip webhook paths) ───────────────────
 app.use((req, _res, next) => {
   if (WEBHOOK_PATHS.has(req.path)) return next();
   return validateInternalKey(req, _res, next);
