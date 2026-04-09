@@ -124,7 +124,7 @@ jobs:
             context: tec-auth-service
           - service: tec-payment-service
             image:   tec-payment-service
-            context: .
+            context: tec-payment-service
           - service: tec-wallet-service
             image:   tec-wallet-service
             context: tec-wallet-service
