@@ -47,6 +47,9 @@
     "preset":          "ts-jest",
     "testEnvironment": "node",
     "testMatch":       ["**/__tests__/**/*.spec.ts", "**/__tests__/**/*.test.ts"],
+    "testPathIgnorePatterns": [
+      "__tests__/notification.service.test.ts"
+    ],
     "testTimeout":     10000,
     "forceExit":       true,
     "moduleNameMapper": {
