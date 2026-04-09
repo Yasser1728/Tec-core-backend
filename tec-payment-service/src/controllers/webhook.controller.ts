@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
@@ -13,51 +13,67 @@ import { piCompletePayment, PiApiError } from '../services/payment.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
-// Helper to get client IP
 const getClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'] as string | undefined;
   if (forwarded) return forwarded.split(',')[0].trim();
   return req.socket.remoteAddress ?? 'unknown';
 };
 
-const validatePiApiKey = (req: Request): boolean => {
-  const expected = process.env.PI_API_KEY;
-  if (!expected) return false;
-
-  const authHeader = req.headers['authorization'];
-  const xPiKey = req.headers['x-pi-key'];
-
-  const candidates: string[] = [];
-  if (typeof authHeader === 'string') candidates.push(authHeader);
-  if (typeof xPiKey === 'string') candidates.push(xPiKey);
-
-  const expectedKey = `Key ${expected}`;
-
-  for (const candidate of candidates) {
-    if (candidate.length === expectedKey.length) {
-      try {
-        if (timingSafeEqual(Buffer.from(candidate), Buffer.from(expectedKey))) return true;
-      } catch {
-        // length mismatch guard already handled above
-      }
-    }
-    if (candidate !== authHeader && candidate.length === expected.length) {
-      try {
-        if (timingSafeEqual(Buffer.from(candidate), Buffer.from(expected))) return true;
-      } catch {
-        // ignore
-      }
-    }
+/**
+ * Validates Pi Network HMAC-SHA256 signature.
+ * Pi Network sends: x-pi-signature: sha256={hmac_hex}
+ * We verify: HMAC-SHA256(PI_WEBHOOK_SECRET, rawBody) === provided_hmac
+ */
+const validatePiSignature = (req: Request): boolean => {
+  const secret = process.env.PI_WEBHOOK_SECRET;
+  if (!secret) {
+    logWarn('PI_WEBHOOK_SECRET not set — webhook signature validation skipped');
+    return false;
   }
 
-  return false;
+  const signatureHeader = req.headers['x-pi-signature'] as string | undefined;
+  if (!signatureHeader) {
+    logWarn('Webhook: missing x-pi-signature header');
+    return false;
+  }
+
+  // Expected format: sha256={hex_digest}
+  const prefix = 'sha256=';
+  if (!signatureHeader.startsWith(prefix)) {
+    logWarn('Webhook: invalid signature format', { signatureHeader });
+    return false;
+  }
+
+  const providedHmac = signatureHeader.slice(prefix.length);
+
+  // rawBody must be set by express.raw() middleware BEFORE json parsing
+  const rawBody: Buffer | undefined = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (!rawBody) {
+    logWarn('Webhook: rawBody not available — ensure express.raw() middleware is applied');
+    return false;
+  }
+
+  const expectedHmac = createHmac('sha256', secret)
+    .update(rawBody)
+    .digest('hex');
+
+  if (providedHmac.length !== expectedHmac.length) return false;
+
+  try {
+    return timingSafeEqual(
+      Buffer.from(providedHmac, 'hex'),
+      Buffer.from(expectedHmac, 'hex'),
+    );
+  } catch {
+    return false;
+  }
 };
 
 export const handleIncompletePayment = async (req: Request, res: Response): Promise<void> => {
-  if (!validatePiApiKey(req)) {
+  if (!validatePiSignature(req)) {
     res.status(401).json({
       success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Pi API key' },
+      error: { code: 'UNAUTHORIZED', message: 'Invalid or missing Pi webhook signature' },
     });
     return;
   }
@@ -182,7 +198,10 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
       return;
     }
 
-    logInfo('Webhook: payment completed successfully', { paymentId: updatedPayment.id, piPaymentId });
+    logInfo('Webhook: payment completed successfully', {
+      paymentId: updatedPayment.id,
+      piPaymentId,
+    });
 
     void createAuditLog({
       userId: updatedPayment.user_id,
@@ -206,7 +225,7 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
         success: false,
         error: {
           code: 'DATABASE_UNAVAILABLE',
-          message: 'Database connection failed. Please check DATABASE_URL configuration.',
+          message: 'Database connection failed.',
         },
       });
       return;
@@ -218,4 +237,3 @@ export const handleIncompletePayment = async (req: Request, res: Response): Prom
     });
   }
 };
- 
