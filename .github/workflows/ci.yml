@@ -33,19 +33,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Build & link @yasser172/tec-shared
-        working-directory: shared
-        run: |
-          npm install --include=dev
-          npm run build
-          npm link
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
-        run: |
-          npm link @yasser172/tec-shared
-          npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Lint
         working-directory: ${{ matrix.service }}
@@ -88,19 +80,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Build & link @yasser172/tec-shared
-        working-directory: shared
-        run: |
-          npm install --include=dev
-          npm run build
-          npm link
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
-        run: |
-          npm link @yasser172/tec-shared
-          npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Run coverage check
         working-directory: ${{ matrix.service }}
