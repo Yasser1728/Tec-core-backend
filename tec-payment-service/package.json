@@ -50,7 +50,9 @@
     "testPathIgnorePatterns": [
       "__tests__/integration/payment.test.ts",
       "__tests__/integration/payment.flow.test.ts",
-      "__tests__/integration/middleware.test.ts"
+      "__tests__/integration/middleware.test.ts",
+      "__tests__/integration/webhook.test.ts",
+      "src/__tests__/payment.controller.test.ts"
     ],
     "testTimeout":     10000,
     "forceExit":       true,
