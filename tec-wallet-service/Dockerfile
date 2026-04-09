@@ -29,11 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
-COPY --from=builder /app/dist            ./dist
-COPY --from=builder /app/prisma/client   ./prisma/client
-COPY prisma/schema.prisma                ./prisma/schema.prisma
-COPY prisma/migrations                   ./prisma/migrations
-COPY docker-entrypoint.sh                ./docker-entrypoint.sh
+COPY --from=builder /app/dist          ./dist
+COPY --from=builder /app/prisma/client ./prisma/client
+COPY prisma/schema.prisma              ./prisma/schema.prisma
+COPY prisma/migrations                 ./prisma/migrations
+COPY docker-entrypoint.sh             ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 ARG PORT=5002
