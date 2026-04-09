@@ -1,4 +1,5 @@
-"name": "tec-payment-service",
+{
+  "name": "tec-payment-service",
   "version": "1.0.0",
   "description": "TEC Payment Service — Pi Network payment processing",
   "main": "dist/server.js",
@@ -55,3 +56,4 @@
     "forceExit":       true,
     "setupFiles":      ["./jest.setup.ts"]
   }
+}
