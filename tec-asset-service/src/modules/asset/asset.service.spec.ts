@@ -2,7 +2,12 @@ import { Test, TestingModule }  from '@nestjs/testing';
 import { ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { AssetService }         from './asset.service';
 import { PrismaService }        from '../prisma/prisma.service';
-import { AssetCategory }        from '../../prisma/client';
+const AssetCategory = {
+  DIGITAL_ASSET: 'DIGITAL_ASSET',
+  DOMAIN:        'DOMAIN',
+  REAL_ESTATE:   'REAL_ESTATE',
+} as const;
+type AssetCategory = typeof AssetCategory[keyof typeof AssetCategory];
 
 // ── Mock Data ─────────────────────────────────────────────────
 const mockAsset = {
