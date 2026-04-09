@@ -1,6 +1,18 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    directory: "/tec-api-gateway"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-auth-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
     directory: "/tec-payment-service"
     schedule:
       interval: "monthly"
@@ -13,13 +25,31 @@ updates:
     open-pull-requests-limit: 2
 
   - package-ecosystem: "npm"
-    directory: "/tec-api-gateway"
+    directory: "/tec-notification-service"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 2
 
   - package-ecosystem: "npm"
-    directory: "/tec-auth-service"
+    directory: "/tec-kyc-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-commerce-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/tec-asset-service"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: "npm"
+    directory: "/shared"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 2
