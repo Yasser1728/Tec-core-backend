@@ -4,14 +4,14 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl
 
-COPY package*.json ./
-COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY tec-asset-service/package*.json ./
+COPY tec-asset-service/prisma/schema.prisma ./prisma/schema.prisma
 
 RUN npm install
 
 RUN npx prisma generate --schema=./prisma/schema.prisma
 
-COPY . .
+COPY tec-asset-service/ .
 
 RUN npm run build && ls -la dist/
 
