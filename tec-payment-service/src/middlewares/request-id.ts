@@ -1,22 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { randomUUID }                      from 'crypto';
-import { requestContext }                  from '../infra/logger';
+import { randomUUID } from 'crypto';
 
-/**
- * Middleware: injects X-Request-ID into AsyncLocalStorage
- * so every log line in the request lifecycle includes requestId.
- */
 export const requestIdMiddleware = (
-  req: Request,
-  res: Response,
+  req:  Request,
+  res:  Response,
   next: NextFunction,
 ): void => {
-  const requestId =
-    (req.headers['x-request-id'] as string) ?? randomUUID();
-
-  // ── Echo requestId in response ────────────────────────
+  const requestId = (req.headers['x-request-id'] as string) ?? randomUUID();
+  req.headers['x-request-id'] = requestId;
   res.setHeader('x-request-id', requestId);
-
-  // ── Run rest of request inside context ────────────────
-  requestContext.run({ requestId }, () => next());
+  next();
 };
