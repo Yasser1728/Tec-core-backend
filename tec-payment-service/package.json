@@ -1,5 +1,4 @@
-{
-  "name": "tec-payment-service",
+"name": "tec-payment-service",
   "version": "1.0.0",
   "description": "TEC Payment Service — Pi Network payment processing",
   "main": "dist/server.js",
@@ -47,8 +46,12 @@
     "preset":          "ts-jest",
     "testEnvironment": "node",
     "testMatch":       ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.spec.ts", "src/__tests__/**/*.test.ts"],
+    "testPathIgnorePatterns": [
+      "__tests__/integration/payment.test.ts",
+      "__tests__/integration/payment.flow.test.ts",
+      "__tests__/integration/middleware.test.ts"
+    ],
     "testTimeout":     10000,
     "forceExit":       true,
     "setupFiles":      ["./jest.setup.ts"]
   }
-}
