@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 
 COPY package*.json ./
-COPY prisma ./prisma/
+COPY prisma/schema.prisma ./prisma/schema.prisma
 
 RUN npm install
 
