@@ -3,10 +3,10 @@ import * as Sentry from '@sentry/node';
 let sentryInitialised = false;
 
 export function initSentry(): void {
-  const dsn = process.env.SENTRY_DSN;
+  const dsn         = process.env.SENTRY_DSN;
   const environment = process.env.NODE_ENV ?? 'production';
-  const serviceName = process.env.SERVICE_NAME ?? 'wallet-service'; // ✅ غيرنا
-  const release = process.env.SERVICE_VERSION ?? '1.0.0';
+  const serviceName = process.env.SERVICE_NAME ?? 'payment-service';
+  const release     = process.env.SERVICE_VERSION ?? '1.0.0';
 
   if (!dsn || environment === 'development' || environment === 'test') {
     return;
@@ -46,7 +46,7 @@ export function initSentry(): void {
 }
 
 export function captureError(
-  error: Error,
+  error:    Error,
   context?: Record<string, unknown>,
 ): void {
   if (!sentryInitialised) return;
