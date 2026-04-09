@@ -2,6 +2,8 @@ import { Test, TestingModule }  from '@nestjs/testing';
 import { ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { AssetService }         from './asset.service';
 import { PrismaService }        from '../prisma/prisma.service';
+
+// تعريف الـ enum محلياً بدل الاستيراد من prisma/client
 const AssetCategory = {
   DIGITAL_ASSET: 'DIGITAL_ASSET',
   DOMAIN:        'DOMAIN',
@@ -62,7 +64,6 @@ describe('AssetService', () => {
     jest.clearAllMocks();
   });
 
-  // ── provisionAsset ────────────────────────────────────────────
   describe('provisionAsset', () => {
     it('creates asset successfully', async () => {
       prismaMock.$transaction.mockImplementation(async (fn: Function) => {
@@ -73,7 +74,6 @@ describe('AssetService', () => {
       });
 
       const result = await service.provisionAsset(createDto);
-
       expect(result).toEqual(mockAsset);
     });
 
@@ -83,8 +83,7 @@ describe('AssetService', () => {
         return fn(txMock);
       });
 
-      await expect(service.provisionAsset(createDto))
-        .rejects.toThrow(ConflictException);
+      await expect(service.provisionAsset(createDto)).rejects.toThrow(ConflictException);
     });
 
     it('throws ConflictException if slug already exists', async () => {
@@ -94,19 +93,16 @@ describe('AssetService', () => {
         return fn(txMock);
       });
 
-      await expect(service.provisionAsset(createDto))
-        .rejects.toThrow(ConflictException);
+      await expect(service.provisionAsset(createDto)).rejects.toThrow(ConflictException);
     });
 
     it('throws InternalServerErrorException on unexpected error', async () => {
       prismaMock.$transaction.mockRejectedValue(new Error('DB connection failed'));
 
-      await expect(service.provisionAsset(createDto))
-        .rejects.toThrow(InternalServerErrorException);
+      await expect(service.provisionAsset(createDto)).rejects.toThrow(InternalServerErrorException);
     });
   });
 
-  // ── findBySlug ────────────────────────────────────────────────
   describe('findBySlug', () => {
     it('returns asset by slug', async () => {
       prismaMock.asset.findUnique.mockResolvedValue(mockAsset);
@@ -122,13 +118,11 @@ describe('AssetService', () => {
 
     it('returns null when slug not found', async () => {
       prismaMock.asset.findUnique.mockResolvedValue(null);
-
       const result = await service.findBySlug('non-existent');
       expect(result).toBeNull();
     });
   });
 
-  // ── findByUser ────────────────────────────────────────────────
   describe('findByUser', () => {
     it('returns assets for user', async () => {
       prismaMock.asset.findMany.mockResolvedValue([mockAsset]);
@@ -144,13 +138,11 @@ describe('AssetService', () => {
 
     it('returns empty array when user has no assets', async () => {
       prismaMock.asset.findMany.mockResolvedValue([]);
-
       const result = await service.findByUser('user-uuid-1');
       expect(result).toHaveLength(0);
     });
   });
 
-  // ── findAll ───────────────────────────────────────────────────
   describe('findAll', () => {
     it('returns all assets', async () => {
       prismaMock.asset.findMany.mockResolvedValue([mockAsset]);
