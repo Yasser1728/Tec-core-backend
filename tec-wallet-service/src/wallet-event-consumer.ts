@@ -1,3 +1,4 @@
+import pino                 from 'pino';
 import { PrismaClient, Prisma } from '../prisma/client';
 import {
   createSubscriber,
@@ -7,6 +8,11 @@ import {
 } from './event-bus';
 import { WalletService } from './wallet/wallet.service';
 
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  base:  { service: 'wallet-service' },
+});
+
 type PrismaTx = Prisma.TransactionClient;
 
 const prisma        = new PrismaClient();
@@ -15,35 +21,32 @@ const walletService = new WalletService(prisma);
 const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<void> => {
   const { paymentId, userId, amount } = event;
 
-  console.log('[WalletConsumer] Processing payment.completed:', {
-    paymentId, userId, amount,
-  });
+  logger.info({ paymentId, userId, amount }, '[WalletConsumer] Processing payment.completed');
 
   await walletService.handlePaymentCompleted(event);
 
-  console.log('[WalletConsumer] ✅ Done:', { paymentId, userId, amount });
+  logger.info({ paymentId, userId, amount }, '[WalletConsumer] Done');
 };
 
 export const startWalletEventConsumer = async (): Promise<void> => {
   const subscriber = createSubscriber();
 
-  // ── Graceful shutdown ──────────────────────────────────
   const shutdown = async (signal: string) => {
-    console.log(`[WalletConsumer] ${signal} received — shutting down...`);
+    logger.info({ signal }, '[WalletConsumer] Shutting down...');
     try {
       await subscriber.quit();
     } catch {
       subscriber.disconnect();
     }
     await prisma.$disconnect();
-    console.log('[WalletConsumer] ✅ Redis + Prisma connections closed');
+    logger.info('[WalletConsumer] Redis + Prisma connections closed');
     process.exit(0);
   };
 
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT',  () => { void shutdown('SIGINT'); });
 
-  console.log('[WalletConsumer] Starting — listening for payment.completed...');
+  logger.info('[WalletConsumer] Starting — listening for payment.completed...');
 
   await subscribeStream(
     subscriber,
