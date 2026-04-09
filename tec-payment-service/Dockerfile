@@ -1,6 +1,3 @@
-# Multi-stage build for TEC Payment Service
-# Build context: repo root (docker build -f tec-payment-service/Dockerfile .)
-
 # Stage 1: Build
 FROM node:20-slim AS builder
 
@@ -9,10 +6,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY tec-payment-service/package*.json ./
+COPY package*.json ./
 RUN npm install --ignore-scripts
 
-COPY tec-payment-service/ ./
+COPY . ./
 
 RUN npx prisma generate && npm run build
 
@@ -26,15 +23,15 @@ ENV NODE_ENV=production
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY tec-payment-service/package*.json ./
+COPY package*.json ./
 RUN npm install --only=production --ignore-scripts && npm cache clean --force
 
-COPY tec-payment-service/prisma/schema.prisma ./prisma/schema.prisma
-COPY tec-payment-service/prisma/migrations    ./prisma/migrations
+COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/migrations    ./prisma/migrations
 RUN npx prisma generate
 
-COPY --from=builder /app/dist              ./dist
-COPY tec-payment-service/docker-entrypoint.sh ./docker-entrypoint.sh
+COPY --from=builder /app/dist         ./dist
+COPY docker-entrypoint.sh             ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 ARG PORT=5003
