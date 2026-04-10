@@ -1,86 +1,70 @@
-import Redis from 'ioredis';
+import Redis              from 'ioredis';
+import pino               from 'pino';
 import { IdentityService } from './identity.service';
 
-// ── Graceful shutdown flag ─────────────────────────────────
+const logger = pino({ level: process.env.LOG_LEVEL ?? 'info', base: { service: 'identity-service' } });
+
 let isShuttingDown = false;
 
-export const startUserCreatedConsumer = async (
-  identityService: IdentityService,
-): Promise<void> => {
+export const startUserCreatedConsumer = async (identityService: IdentityService): Promise<void> => {
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
-    console.warn('[UserCreatedConsumer] REDIS_URL not set — disabled');
+    logger.warn('[UserCreatedConsumer] REDIS_URL not set — disabled');
     return;
   }
 
   const client = new Redis(redisUrl, {
     maxRetriesPerRequest: null,
-    retryStrategy: (times) => {
-      if (isShuttingDown) return null;
-      return Math.min(times * 100, 3000);
-    },
+    retryStrategy: (times) => isShuttingDown ? null : Math.min(times * 100, 3000),
     enableOfflineQueue: true,
   });
 
-  const STREAM   = 'user.created';
-  const GROUP    = 'identity-service';
-  const CONSUMER = 'identity-consumer-1';
+  const STREAM = 'user.created', GROUP = 'identity-service', CONSUMER = 'identity-consumer-1';
 
   try {
     await client.xgroup('CREATE', STREAM, GROUP, '$', 'MKSTREAM');
-    console.log('[UserCreatedConsumer] Consumer group created');
-  } catch (err: any) {
-    if (!err.message?.includes('BUSYGROUP')) throw err;
+    logger.info('[UserCreatedConsumer] Consumer group created');
+  } catch (err: unknown) {
+    if (!(err instanceof Error) || !err.message?.includes('BUSYGROUP')) throw err;
   }
 
-  // ── Graceful shutdown handler ──────────────────────────
   const shutdown = async (signal: string) => {
-    console.log(`[UserCreatedConsumer] ${signal} received — shutting down...`);
+    logger.info({ signal }, '[UserCreatedConsumer] Shutting down...');
     isShuttingDown = true;
     await client.quit().catch(() => client.disconnect());
-    console.log('[UserCreatedConsumer] ✅ Redis connection closed');
+    logger.info('[UserCreatedConsumer] Redis connection closed');
   };
 
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT',  () => shutdown('SIGINT'));
 
-  console.log('[UserCreatedConsumer] Started — listening for user.created...');
+  logger.info('[UserCreatedConsumer] Started — listening for user.created...');
 
   while (!isShuttingDown) {
     try {
-      const results = await client.xreadgroup(
-        'GROUP', GROUP, CONSUMER,
-        'COUNT', 10,
-        'BLOCK', 5000,
-        'STREAMS', STREAM,
-        '>',
-      ) as any;
-
+      const results = await client.xreadgroup('GROUP', GROUP, CONSUMER, 'COUNT', 10, 'BLOCK', 5000, 'STREAMS', STREAM, '>') as any;
       if (!results) continue;
 
       for (const [, messages] of results) {
         for (const [messageId, fields] of messages) {
           try {
-            const dataIndex = fields.indexOf('data');
+            const dataIndex = (fields as string[]).indexOf('data');
             if (dataIndex === -1) continue;
-            const payload = JSON.parse(fields[dataIndex + 1]);
-            await identityService.findOrCreateUser({
-              piUserId: payload.piUserId,
-              username: payload.username,
-            });
+            const payload = JSON.parse((fields as string[])[dataIndex + 1]);
+            await identityService.findOrCreateUser({ piUserId: payload.piUserId, username: payload.username });
             await client.xack(STREAM, GROUP, messageId);
-            console.log(`[UserCreatedConsumer] ✅ User synced: ${payload.username}`);
-          } catch (err) {
-            console.error(`[UserCreatedConsumer] Handler failed ${messageId}:`, err);
+            logger.info({ username: payload.username }, '[UserCreatedConsumer] User synced');
+          } catch (err: unknown) {
+            logger.error({ messageId, err }, '[UserCreatedConsumer] Handler failed');
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isShuttingDown) break;
-      if (err.message?.includes('NOGROUP')) {
+      if (err instanceof Error && err.message?.includes('NOGROUP')) {
         await client.xgroup('CREATE', STREAM, GROUP, '$', 'MKSTREAM').catch(() => {});
       } else {
-        console.error('[UserCreatedConsumer] Error:', err.message);
+        logger.error({ err }, '[UserCreatedConsumer] Error');
         await new Promise(r => setTimeout(r, 1000));
       }
     }
