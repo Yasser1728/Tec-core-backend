@@ -1,11 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { OrdersService } from './order.service';
-import Redis from 'ioredis';
+import { PrismaService }                     from '../../prisma/prisma.service';
+import { OrdersService }                     from './order.service';
+import Redis                                 from 'ioredis';
 
 @Injectable()
 export class OrderConsumer implements OnModuleInit {
-  private readonly logger = new Logger(OrderConsumer.name);
+  private readonly logger     = new Logger(OrderConsumer.name);
   private subscriber: Redis | null = null;
 
   constructor(
@@ -35,8 +35,8 @@ export class OrderConsumer implements OnModuleInit {
 
     try {
       await this.subscriber.xgroup('CREATE', STREAM, GROUP, '$', 'MKSTREAM');
-    } catch (err: any) {
-      if (!err.message?.includes('BUSYGROUP')) throw err;
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || !err.message?.includes('BUSYGROUP')) throw err;
     }
 
     this.logger.log(`Order Consumer started — listening on ${STREAM}`);
@@ -50,29 +50,29 @@ export class OrderConsumer implements OnModuleInit {
           'BLOCK', 5000,
           'STREAMS', STREAM,
           '>',
-        ) as any;
+        ) as unknown as Array<[string, Array<[string, string[]]>]> | null;
 
         if (!results) continue;
 
         for (const [, messages] of results) {
           for (const [messageId, fields] of messages) {
             try {
-              const dataIndex = (fields as string[]).indexOf('data');
+              const dataIndex = fields.indexOf('data');
               if (dataIndex === -1) continue;
-              const payload = JSON.parse((fields as string[])[dataIndex + 1]);
+              const payload = JSON.parse(fields[dataIndex + 1]);
               await this.handlePaymentCompleted(payload);
               await this.subscriber.xack(STREAM, GROUP, messageId);
               this.logger.log(`ACK: ${messageId}`);
-            } catch (err) {
+            } catch (err: unknown) {
               this.logger.error(`Handler failed: ${(err as Error).message}`);
             }
           }
         }
-      } catch (err: any) {
-        if (err.message?.includes('NOGROUP')) {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message?.includes('NOGROUP')) {
           await this.subscriber.xgroup('CREATE', STREAM, GROUP, '$', 'MKSTREAM');
         } else {
-          this.logger.error(`Stream error: ${err.message}`);
+          this.logger.error(`Stream error: ${(err as Error).message}`);
           await new Promise(r => setTimeout(r, 1000));
         }
       }
@@ -85,19 +85,19 @@ export class OrderConsumer implements OnModuleInit {
       'COUNT', 100,
       'STREAMS', stream,
       '0',
-    ) as any;
+    ) as unknown as Array<[string, Array<[string, string[]]>]> | null;
 
     if (!pending) return;
 
     for (const [, messages] of pending) {
       for (const [messageId, fields] of messages) {
         try {
-          const dataIndex = (fields as string[]).indexOf('data');
+          const dataIndex = fields.indexOf('data');
           if (dataIndex === -1) continue;
-          const payload = JSON.parse((fields as string[])[dataIndex + 1]);
+          const payload = JSON.parse(fields[dataIndex + 1]);
           await this.handlePaymentCompleted(payload);
           await this.subscriber!.xack(stream, group, messageId);
-        } catch (err) {
+        } catch (err: unknown) {
           this.logger.error(`Pending failed: ${(err as Error).message}`);
         }
       }
@@ -132,4 +132,4 @@ export class OrderConsumer implements OnModuleInit {
 
     this.logger.log(`Order ${order.id} → PAID`);
   }
-          }
+}
