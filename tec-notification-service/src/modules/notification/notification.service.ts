@@ -20,7 +20,6 @@ export class NotificationService {
   ) {}
 
   async create(dto: CreateNotificationDto) {
-    // ── 1. Save to DB ─────────────────────────────────
     const notification = await this.prisma.notification.create({
       data: {
         user_id:  dto.userId,
@@ -33,10 +32,9 @@ export class NotificationService {
 
     this.logger.log(`Created: ${dto.type} for user ${dto.userId}`);
 
-    // ── 2. Send FCM push (non-blocking) ───────────────
     if (this.fcm.isEnabled) {
       this.sendPush(dto).catch(err =>
-        this.logger.error(`FCM push failed: ${err.message}`)
+        this.logger.error(`FCM push failed: ${(err as Error).message}`)
       );
     }
 
@@ -51,7 +49,7 @@ export class NotificationService {
 
     if (tokens.length === 0) return;
 
-    const tokenList = tokens.map(t => t.token);
+    const tokenList = tokens.map((t: { token: string }) => t.token);
 
     const { failed } = await this.fcm.sendToTokens(
       tokenList,
@@ -60,7 +58,6 @@ export class NotificationService {
       { type: dto.type, userId: dto.userId },
     );
 
-    // ── حذف الـ tokens المنتهية ─────────────────────
     if (failed > 0) {
       this.logger.warn(`${failed} FCM tokens may be expired`);
     }
