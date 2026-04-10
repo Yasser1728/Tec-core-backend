@@ -541,7 +541,7 @@ const swaggerSpec = swaggerJsdoc({
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production' && !process.env.INTERNAL_SECRET) {
-    console.error('FATAL: INTERNAL_SECRET must be configured in production');
+    new Logger('Bootstrap').fatal('FATAL: INTERNAL_SECRET must be configured in production');
     process.exit(1);
   }
 
@@ -601,7 +601,15 @@ async function bootstrap() {
   const internalKey = req.headers['x-internal-key'];
   const secret      = process.env.INTERNAL_SECRET;
 
-  if (!secret || internalKey !== secret) {
+  const isValid = secret &&
+    typeof internalKey === 'string' &&
+    internalKey.length === secret.length &&
+    require('crypto').timingSafeEqual(
+      Buffer.from(internalKey),
+      Buffer.from(secret),
+    );
+
+  if (!isValid) {
     res.status(403).json({
       success: false,
       error: { code: 'FORBIDDEN', message: 'Internal access only' },
