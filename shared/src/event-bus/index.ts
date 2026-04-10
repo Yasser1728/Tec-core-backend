@@ -64,8 +64,8 @@ export const ensureConsumerGroup = async (
   try {
     await client.xgroup('CREATE', streamName, groupName, '$', 'MKSTREAM');
     logger.info({ groupName, streamName }, '[EventBus] Consumer group created');
-  } catch (err: any) {
-    if (!err.message?.includes('BUSYGROUP')) throw err;
+  } catch (err: unknown) {
+    if (!(err instanceof Error) || !err.message?.includes('BUSYGROUP')) throw err;
   }
 };
 
@@ -74,13 +74,13 @@ const processPendingMessages = async (
   streamName:   string,
   groupName:    string,
   consumerName: string,
-  handler:      (payload: any) => Promise<void>,
+  handler:      (payload: unknown) => Promise<void>,
 ): Promise<void> => {
   const pending = await client.xreadgroup(
     'GROUP', groupName, consumerName,
     'COUNT', 100,
     'STREAMS', streamName, '0',
-  ) as any;
+  ) as unknown as Array<[string, Array<[string, string[]]>]> | null;
 
   if (!pending) return;
 
@@ -94,7 +94,7 @@ const processPendingMessages = async (
         await handler(payload);
         await client.xack(streamName, groupName, messageId);
         count++;
-      } catch (err) {
+      } catch (err: unknown) {
         logger.error({ messageId, err }, '[EventBus] Pending message failed');
       }
     }
@@ -108,7 +108,7 @@ export const subscribeStream = async (
   streamName:   string,
   groupName:    string,
   consumerName: string,
-  handler:      (payload: any) => Promise<void>,
+  handler:      (payload: unknown) => Promise<void>,
   options: {
     batchSize?:  number;
     blockMs?:    number;
@@ -128,7 +128,7 @@ export const subscribeStream = async (
         'COUNT', batchSize,
         'BLOCK', blockMs,
         'STREAMS', streamName, '>',
-      ) as any;
+      ) as unknown as Array<[string, Array<[string, string[]]>]> | null;
 
       if (!results) continue;
 
@@ -141,13 +141,13 @@ export const subscribeStream = async (
             await handler(payload);
             await client.xack(streamName, groupName, messageId);
             logger.info({ messageId }, '[EventBus] ACK');
-          } catch (err) {
+          } catch (err: unknown) {
             logger.error({ messageId, err }, '[EventBus] Handler failed');
           }
         }
       }
-    } catch (err: any) {
-      if (err.message?.includes('NOGROUP')) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message?.includes('NOGROUP')) {
         await ensureConsumerGroup(client, streamName, groupName);
       } else {
         logger.error({ err }, '[EventBus] Stream read error');
