@@ -7,7 +7,7 @@
     "build":         "prisma generate && nest build",
     "start":         "node dist/main.js",
     "start:dev":     "nest start --watch",
-    "test":          "jest",
+    "test":          "prisma generate && jest --forceExit",
     "test:watch":    "jest --watch",
     "test:coverage": "jest --coverage"
   },
