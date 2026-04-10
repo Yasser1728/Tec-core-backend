@@ -1,4 +1,7 @@
 import * as Sentry from '@sentry/node';
+import pino        from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL ?? 'info', base: { service: 'payment-service' } });
 
 let sentryInitialised = false;
 
@@ -42,7 +45,7 @@ export function initSentry(): void {
   });
 
   sentryInitialised = true;
-  console.log(`[Sentry] Initialised for ${serviceName} (${environment})`);
+  logger.info({ serviceName, environment }, '[Sentry] Initialised');
 }
 
 export function captureError(
