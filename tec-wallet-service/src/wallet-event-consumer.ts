@@ -1,4 +1,4 @@
-import pino                 from 'pino';
+import pino                     from 'pino';
 import { PrismaClient, Prisma } from '../prisma/client';
 import {
   createSubscriber,
@@ -13,12 +13,14 @@ const logger = pino({
   base:  { service: 'wallet-service' },
 });
 
-type PrismaTx = Prisma.TransactionClient;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _PrismaTx = Prisma.TransactionClient;
 
 const prisma        = new PrismaClient();
 const walletService = new WalletService(prisma);
 
-const handlePaymentCompleted = async (event: PaymentCompletedEvent): Promise<void> => {
+const handlePaymentCompleted = async (payload: unknown): Promise<void> => {
+  const event                  = payload as PaymentCompletedEvent;
   const { paymentId, userId, amount } = event;
 
   logger.info({ paymentId, userId, amount }, '[WalletConsumer] Processing payment.completed');
