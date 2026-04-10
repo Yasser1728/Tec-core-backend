@@ -14,7 +14,6 @@ export class FcmService {
     }
 
     try {
-      // ── منع double-init لو في test أو hot-reload ──────────
       if (admin.apps.length === 0) {
         this.app = admin.initializeApp({
           credential: admin.credential.cert(
@@ -25,17 +24,16 @@ export class FcmService {
       } else {
         this.app = admin.apps[0]!;
       }
-    } catch (err) {
+    } catch (err: unknown) {
       this.logger.error('Firebase init failed', (err as Error).message);
     }
   }
 
-  // ── Send to single token ──────────────────────────────
   async sendToToken(
-    token:   string,
-    title:   string,
-    body:    string,
-    data?:   Record<string, string>,
+    token:  string,
+    title:  string,
+    body:   string,
+    data?:  Record<string, string>,
   ): Promise<boolean> {
     if (!this.app) return false;
 
@@ -44,31 +42,30 @@ export class FcmService {
         token,
         notification: { title, body },
         data:         data ?? {},
-        android: { priority: 'high' },
-        apns:    { payload: { aps: { sound: 'default' } } },
+        android:      { priority: 'high' },
+        apns:         { payload: { aps: { sound: 'default' } } },
       });
       this.logger.log(`FCM sent to token: ${token.slice(0, 20)}...`);
       return true;
-    } catch (err: any) {
-      // Token منتهي — نحذفه
+    } catch (err: unknown) {
+      const fcmErr = err as { code?: string; message?: string };
       if (
-        err.code === 'messaging/registration-token-not-registered' ||
-        err.code === 'messaging/invalid-registration-token'
+        fcmErr.code === 'messaging/registration-token-not-registered' ||
+        fcmErr.code === 'messaging/invalid-registration-token'
       ) {
         this.logger.warn(`FCM token expired — should be removed: ${token.slice(0, 20)}`);
         return false;
       }
-      this.logger.error(`FCM send failed: ${err.message}`);
+      this.logger.error(`FCM send failed: ${fcmErr.message}`);
       return false;
     }
   }
 
-  // ── Send to multiple tokens ───────────────────────────
   async sendToTokens(
-    tokens:  string[],
-    title:   string,
-    body:    string,
-    data?:   Record<string, string>,
+    tokens: string[],
+    title:  string,
+    body:   string,
+    data?:  Record<string, string>,
   ): Promise<{ success: number; failed: number }> {
     if (!this.app || tokens.length === 0) return { success: 0, failed: 0 };
 
@@ -85,11 +82,8 @@ export class FcmService {
         `FCM multicast: ${response.successCount} success, ${response.failureCount} failed`
       );
 
-      return {
-        success: response.successCount,
-        failed:  response.failureCount,
-      };
-    } catch (err) {
+      return { success: response.successCount, failed: response.failureCount };
+    } catch (err: unknown) {
       this.logger.error(`FCM multicast failed: ${(err as Error).message}`);
       return { success: 0, failed: tokens.length };
     }
@@ -98,4 +92,4 @@ export class FcmService {
   get isEnabled(): boolean {
     return this.app !== null;
   }
-        }
+    }
