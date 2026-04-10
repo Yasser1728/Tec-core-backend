@@ -39,4 +39,3 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-        continue-on-error: true  # ← مش بيوقف الـ pipeline
