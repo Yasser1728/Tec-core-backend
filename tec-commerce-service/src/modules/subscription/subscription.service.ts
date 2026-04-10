@@ -4,21 +4,21 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService }                        from '../../prisma/prisma.service';
 import { SubscriptionPlan, SubscriptionStatus } from '../../../prisma/client';
 
 export const PLANS: Record<SubscriptionPlan, {
-  name:        string;
-  price:       number;
-  currency:    string;
-  duration:    number; // days
-  features:    string[];
+  name:     string;
+  price:    number;
+  currency: string;
+  duration: number;
+  features: string[];
 }> = {
   FREE: {
     name:     'Free',
     price:    0,
     currency: 'PI',
-    duration: 0, // no expiry
+    duration: 0,
     features: [
       'Up to 5 assets',
       'Basic wallet',
@@ -58,22 +58,19 @@ export const PLANS: Record<SubscriptionPlan, {
 export class SubscriptionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Get Plans ───────────────────────────────────────────────
   getPlans() {
     return Object.entries(PLANS).map(([key, plan]) => ({
-      id:       key as SubscriptionPlan,
+      id: key as SubscriptionPlan,
       ...plan,
     }));
   }
 
-  // ── Get User Subscription ───────────────────────────────────
   async getSubscription(userId: string) {
     let sub = await this.prisma.subscription.findUnique({
       where:   { user_id: userId },
       include: { history: { orderBy: { created_at: 'desc' }, take: 5 } },
     });
 
-    // Auto-create FREE subscription if none exists
     if (!sub) {
       sub = await this.prisma.subscription.create({
         data: {
@@ -90,7 +87,7 @@ export class SubscriptionService {
 
     return {
       ...sub,
-      planDetails: PLANS[sub.plan],
+      planDetails: PLANS[sub.plan as SubscriptionPlan],
       isActive:    sub.status === 'ACTIVE',
       isExpired:   sub.current_period_end
         ? new Date() > new Date(sub.current_period_end)
@@ -98,7 +95,6 @@ export class SubscriptionService {
     };
   }
 
-  // ── Subscribe ────────────────────────────────────────────────
   async subscribe(data: {
     userId:       string;
     plan:         SubscriptionPlan;
@@ -120,8 +116,8 @@ export class SubscriptionService {
       throw new ConflictException(`Already subscribed to ${data.plan}`);
     }
 
-    const now   = new Date();
-    const end   = new Date(now);
+    const now = new Date();
+    const end = new Date(now);
     end.setDate(end.getDate() + planDetails.duration);
 
     const sub = await this.prisma.subscription.upsert({
@@ -164,17 +160,16 @@ export class SubscriptionService {
       include: { history: { orderBy: { created_at: 'desc' }, take: 5 } },
     });
 
-    return { ...sub, planDetails: PLANS[sub.plan] };
+    return { ...sub, planDetails: PLANS[sub.plan as SubscriptionPlan] };
   }
 
-  // ── Cancel ───────────────────────────────────────────────────
   async cancel(userId: string, reason?: string) {
     const sub = await this.prisma.subscription.findUnique({
       where: { user_id: userId },
     });
 
-    if (!sub) throw new NotFoundException('Subscription not found');
-    if (sub.plan === 'FREE') throw new BadRequestException('Cannot cancel free plan');
+    if (!sub)                   throw new NotFoundException('Subscription not found');
+    if (sub.plan === 'FREE')    throw new BadRequestException('Cannot cancel free plan');
     if (sub.status === 'CANCELLED') throw new ConflictException('Already cancelled');
 
     const updated = await this.prisma.subscription.update({
@@ -194,16 +189,15 @@ export class SubscriptionService {
       include: { history: { orderBy: { created_at: 'desc' }, take: 5 } },
     });
 
-    return { ...updated, planDetails: PLANS[updated.plan] };
+    return { ...updated, planDetails: PLANS[updated.plan as SubscriptionPlan] };
   }
 
-  // ── Check Feature Access ─────────────────────────────────────
   async hasAccess(userId: string, feature: string): Promise<boolean> {
     const sub = await this.getSubscription(userId);
     if (sub.status !== 'ACTIVE') return false;
     if (sub.isExpired) return false;
-    return PLANS[sub.plan].features.some(f =>
+    return PLANS[sub.plan as SubscriptionPlan].features.some((f: string) =>
       f.toLowerCase().includes(feature.toLowerCase())
     );
   }
-}
+      }
