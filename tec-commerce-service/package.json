@@ -7,7 +7,7 @@
     "build":         "prisma generate && nest build",
     "start":         "node dist/main.js",
     "start:dev":     "nest start --watch",
-    "test":          "jest",
+    "test":          "prisma generate && jest --forceExit",
     "test:watch":    "jest --watch",
     "test:coverage": "jest --coverage"
   },
@@ -17,7 +17,7 @@
     "@nestjs/platform-fastify": "^10.0.0",
     "@nestjs/config":           "^3.0.0",
     "@nestjs/jwt":              "^10.0.0",
-    "@nestjs/throttler":        "^5.0.0",
+    "@nestjs/throttler":         "^5.0.0",
     "@prisma/client":           "^5.22.0",
     "@sentry/node":             "^10.39.0",
     "fastify":                  "^4.0.0",
