@@ -30,7 +30,9 @@ COPY prisma/migrations                 ./prisma/migrations
 COPY docker-entrypoint.sh             ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# ✅ chown قبل USER عشان appuser يقدر يكتب في node_modules
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser && \
+    chown -R appuser:appgroup /app
 USER appuser
 
 ARG PORT=5002
