@@ -18,11 +18,6 @@ const mockPrisma = {
   $transaction:  jest.fn(),
 };
 
-jest.mock('../../../prisma/client', () => ({
-  OrderStatus: { PENDING: 'PENDING', PAID: 'PAID', CANCELLED: 'CANCELLED' },
-  Prisma:      {},
-}));
-
 import { OrdersService }  from '../src/modules/order/order.service';
 import { PrismaService }  from '../src/prisma/prisma.service';
 
