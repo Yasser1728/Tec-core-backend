@@ -35,7 +35,7 @@ export class ProxyService {
       pathRewrite: { '^/api/v1/notification': '/notifications', '^/api/notification': '/notifications' },
     },
     storage: {
-      target:      process.env.STORAGE_SERVICE_URL || 'https://storage-sevice-production.up.railway.app',
+      target:      process.env.STORAGE_SERVICE_URL || 'https://storage-service-production.up.railway.app',
       pathRewrite: { '^/api/v1/storage': '/storage', '^/api/storage': '/storage' },
     },
     kyc: {
