@@ -3,10 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import pino             from 'pino';
+import pino              from 'pino';
 import { PrismaService } from '../../prisma/prisma.service';
+import { KycStatus }     from '@prisma/client';
 
-const logger = pino({ level: process.env.LOG_LEVEL ?? 'info', base: { service: 'kyc-service' } });
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  base:  { service: 'kyc-service' },
+});
 
 @Injectable()
 export class KycService {
@@ -48,12 +52,18 @@ export class KycService {
     if (kyc.status === 'VERIFIED') throw new BadRequestException('KYC already verified');
     if (kyc.status === 'PENDING')  throw new BadRequestException('KYC already submitted and under review');
 
-    const updated = await this.prisma.kyc.update({ where: { user_id: userId }, data: { status: 'NOT_STARTED' } });
+    const updated = await this.prisma.kyc.update({
+      where: { user_id: userId },
+      data:  { status: 'NOT_STARTED' },
+    });
     await this.createAuditLog(kyc.id, 'start', kyc.status, 'NOT_STARTED');
     return updated;
   }
 
-  async uploadDocuments(userId: string, data: { idFrontUrl?: string; idBackUrl?: string; selfieUrl?: string }) {
+  async uploadDocuments(
+    userId: string,
+    data: { idFrontUrl?: string; idBackUrl?: string; selfieUrl?: string },
+  ) {
     const kyc = await this.getOrCreate(userId);
     if (kyc.status === 'VERIFIED') throw new BadRequestException('KYC already verified');
 
@@ -61,8 +71,8 @@ export class KycService {
       where: { user_id: userId },
       data: {
         ...(data.idFrontUrl && { id_front_url: data.idFrontUrl }),
-        ...(data.idBackUrl  && { id_back_url:  data.idBackUrl }),
-        ...(data.selfieUrl  && { selfie_url:    data.selfieUrl }),
+        ...(data.idBackUrl  && { id_back_url:  data.idBackUrl  }),
+        ...(data.selfieUrl  && { selfie_url:    data.selfieUrl  }),
       },
     });
 
@@ -123,34 +133,37 @@ export class KycService {
   private async createAuditLog(
     kycId:      string,
     action:     string,
-    fromStatus: unknown,
-    toStatus:   unknown,
+    fromStatus: KycStatus,
+    toStatus:   KycStatus,
     metadata?:  Record<string, unknown>,
   ) {
     await this.prisma.kycAuditLog.create({
       data: {
         kyc_id:      kycId,
         action,
-        from_status: fromStatus as any,
-        to_status:   toStatus   as any,
-        metadata:    (metadata ?? {}) as any,
+        from_status: fromStatus,
+        to_status:   toStatus,
+        metadata:    (metadata ?? {}) as Record<string, unknown>,
       },
     });
   }
 
+  // ✅ P0-6: shared Redis publisher بدل new Redis() per call
   private async emitKycVerified(userId: string, level: string): Promise<void> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Redis    = require('ioredis');
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) return;
 
-      const client = new Redis(redisUrl, { maxRetriesPerRequest: 3, enableOfflineQueue: true });
-      await client.xadd('kyc.verified', '*', 'data', JSON.stringify({ userId, level, timestamp: new Date().toISOString() }));
-      await client.quit();
+      const { publishEvent } = await import('@yasser172/tec-shared');
+      await publishEvent('kyc.verified', {
+        userId,
+        level,
+        timestamp: new Date().toISOString(),
+      });
+
       logger.info({ userId }, '[KycService] kyc.verified event emitted');
     } catch (err: unknown) {
       logger.warn({ err }, '[KycService] Failed to emit kyc.verified');
     }
   }
-      }
+  }
