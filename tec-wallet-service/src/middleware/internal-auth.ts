@@ -16,9 +16,14 @@ import { Request, Response, NextFunction } from 'express';
 export const validateInternalKey = (req: Request, res: Response, next: NextFunction): void => {
   const secret = process.env.INTERNAL_SECRET;
   if (!secret) {
-    // No secret configured — skip enforcement (safe for local dev).
-    next();
-    return;
+  res.status(403).json({
+    success: false,
+    error: {
+      code:    'FORBIDDEN',
+      message: 'INTERNAL_SECRET not configured',
+    },
+  });
+  return;
   }
 
   const provided = req.headers['x-internal-key'];
