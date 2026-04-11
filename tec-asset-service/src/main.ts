@@ -45,7 +45,10 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix('api');
+  // ✅ استثناء /health من الـ global prefix
+  app.setGlobalPrefix('api', {
+    exclude: ['health'],
+  });
 
   const config = new DocumentBuilder()
     .setTitle('TEC Asset Service')
