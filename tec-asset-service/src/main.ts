@@ -45,17 +45,7 @@ async function bootstrap() {
     }),
   );
 
-  // ✅ Health check endpoints — قبل الـ global prefix
-  app.getHttpAdapter().get('/health', (_req: unknown, res: { send: (s: string) => void }) => {
-    res.send('ok');
-  });
-
   app.setGlobalPrefix('api');
-
-  // ✅ Health check داخل الـ prefix كمان
-  app.getHttpAdapter().get('/api/health', (_req: unknown, res: { send: (s: string) => void }) => {
-    res.send('ok');
-  });
 
   const config = new DocumentBuilder()
     .setTitle('TEC Asset Service')
@@ -72,7 +62,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/assets/docs', app, document);
 
-  const port = process.env.PORT || 5009;
+  const port = process.env.PORT || 5004;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Asset Service running on: http://0.0.0.0:${port}/api/assets`);
