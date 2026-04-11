@@ -31,6 +31,9 @@ COPY --from=builder /app/dist ./dist
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+USER appuser
+
 EXPOSE 5009
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
