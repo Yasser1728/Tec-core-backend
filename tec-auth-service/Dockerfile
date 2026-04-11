@@ -24,7 +24,9 @@ RUN npm install --omit=dev && npx prisma generate
 
 COPY --from=builder /app/dist ./dist
 
-# ✅ H3 Fix — الـ port الصح 5001
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
 EXPOSE 5001
 
 CMD ["node", "dist/main"]
