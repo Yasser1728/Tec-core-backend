@@ -5,13 +5,11 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import {
-  PrismaClient,
   OrderStatus,
   Prisma,
   Product,
-} from '../../../prisma/client'; // ← 3 مستويات لأن الملف في src/modules/order/
-
-const prisma = new PrismaClient();
+} from '../../../prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 
 type PrismaTx = Prisma.TransactionClient;
 
@@ -30,15 +28,15 @@ export interface CheckoutDto {
 
 @Injectable()
 export class OrdersService {
+  constructor(private readonly prisma: PrismaService) {}
 
-  // ── Create Order ────────────────────────────────────────────
   async createOrder(dto: CreateOrderDto) {
     if (!dto.items?.length) {
       throw new BadRequestException('Order must have at least one item');
     }
 
     const productIds = dto.items.map(i => i.product_id);
-    const products   = await prisma.product.findMany({
+    const products   = await this.prisma.product.findMany({
       where: { id: { in: productIds }, status: 'ACTIVE' },
     });
 
@@ -53,14 +51,13 @@ export class OrdersService {
       }
     }
 
-    const total = dto.items.reduce((sum, item) => {
+    const total    = dto.items.reduce((sum, item) => {
       const product = products.find((p: Product) => p.id === item.product_id)!;
       return sum + product.price * item.quantity;
     }, 0);
-
     const currency = products[0].currency;
 
-    const order = await prisma.$transaction(async (tx: PrismaTx) => {
+    return this.prisma.$transaction(async (tx: PrismaTx) => {
       const newOrder = await tx.order.create({
         data: {
           buyer_id:      dto.buyer_id,
@@ -100,13 +97,10 @@ export class OrdersService {
 
       return newOrder;
     });
-
-    return order;
   }
 
-  // ── Checkout ─────────────────────────────────────────────────
   async checkout(dto: CheckoutDto) {
-    const order = await prisma.order.findUnique({ where: { id: dto.order_id } });
+    const order = await this.prisma.order.findUnique({ where: { id: dto.order_id } });
     if (!order) throw new NotFoundException('Order not found');
 
     if (order.status !== 'PENDING') {
@@ -114,7 +108,7 @@ export class OrdersService {
     }
 
     if (dto.payment_id) {
-      const existing = await prisma.order.findUnique({
+      const existing = await this.prisma.order.findUnique({
         where: { payment_id: dto.payment_id },
       });
       if (existing && existing.id !== dto.order_id) {
@@ -122,7 +116,7 @@ export class OrdersService {
       }
     }
 
-    const updated = await prisma.$transaction(async (tx: PrismaTx) => {
+    return this.prisma.$transaction(async (tx: PrismaTx) => {
       const updatedOrder = await tx.order.update({
         where: { id: dto.order_id },
         data: {
@@ -145,13 +139,10 @@ export class OrdersService {
 
       return updatedOrder;
     });
-
-    return updated;
   }
 
-  // ── Get Order ────────────────────────────────────────────────
   async getOrder(id: string, buyer_id?: string) {
-    const order = await prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where:   { id },
       include: { items: true, timeline: { orderBy: { created_at: 'asc' } } },
     });
@@ -162,7 +153,6 @@ export class OrdersService {
     return order;
   }
 
-  // ── List Orders ──────────────────────────────────────────────
   async listOrders(
     buyer_id: string,
     options: { page?: number; limit?: number; status?: string } = {},
@@ -172,14 +162,14 @@ export class OrdersService {
     if (status) where.status = status as OrderStatus;
 
     const [orders, total] = await Promise.all([
-      prisma.order.findMany({
+      this.prisma.order.findMany({
         where,
         include: { items: true },
         orderBy: { created_at: 'desc' },
         skip:    (page - 1) * limit,
         take:    limit,
       }),
-      prisma.order.count({ where }),
+      this.prisma.order.count({ where }),
     ]);
 
     return {
@@ -191,9 +181,8 @@ export class OrdersService {
     };
   }
 
-  // ── Cancel Order ─────────────────────────────────────────────
   async cancelOrder(id: string, buyer_id: string, reason?: string) {
-    const order = await prisma.order.findUnique({
+    const order = await this.prisma.order.findUnique({
       where:   { id },
       include: { items: true },
     });
@@ -206,7 +195,7 @@ export class OrdersService {
       throw new ConflictException(`Cannot cancel order with status: ${order.status}`);
     }
 
-    await prisma.$transaction(async (tx: PrismaTx) => {
+    await this.prisma.$transaction(async (tx: PrismaTx) => {
       await tx.order.update({
         where: { id },
         data: {
@@ -235,4 +224,4 @@ export class OrdersService {
 
     return { success: true, message: 'Order cancelled' };
   }
-}
+                                                      }
