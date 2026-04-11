@@ -1,23 +1,42 @@
-FROM node:22-alpine
+FROM node:20-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl
-
 COPY package*.json ./
-COPY prisma/schema.prisma ./prisma/schema.prisma
+RUN npm install --ignore-scripts
 
-RUN npm install
-
-RUN npx prisma generate --schema=./prisma/schema.prisma
-
+COPY prisma/ ./prisma/
 COPY . .
 
-RUN npm run build && ls -la dist/
+RUN npx prisma generate --schema=./prisma/schema.prisma
+RUN npm run build
+
+FROM node:20-slim AS production
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY prisma/ ./prisma/
+
+RUN npm install --ignore-scripts --omit=dev && npm cache clean --force
+
+COPY --from=builder /app/dist        ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 
 EXPOSE 5009
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5009/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 5009) + '/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/main"]
