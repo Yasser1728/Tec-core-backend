@@ -91,7 +91,7 @@ export class AuthService {
 
   // ── Register ──────────────────────────────────────────────
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    const conditions: any[] = [];
+    const conditions: { email?: string; pi_uid?: string }[] = [];
     if (dto.email)  conditions.push({ email:  dto.email });
     if (dto.pi_uid) conditions.push({ pi_uid: dto.pi_uid });
     if (conditions.length === 0)
@@ -118,7 +118,7 @@ export class AuthService {
 
   // ── Login ─────────────────────────────────────────────────
   async login(dto: LoginDto): Promise<AuthResponse> {
-    let user: any = null;
+    let user: Awaited<ReturnType<typeof this.prisma.user.findUnique>> | null = null;
 
     if (dto.pi_uid) {
       user = await this.prisma.user.findUnique({ where: { pi_uid: dto.pi_uid } });
@@ -138,7 +138,9 @@ export class AuthService {
   // ── Validate Token ────────────────────────────────────────
   async validateToken(token: string): Promise<TokenPayload> {
     try {
-      return this.jwtService.verify<TokenPayload>(token);
+      return this.jwtService.verify<TokenPayload>(token, {
+        algorithms: ['HS256'],
+      });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
@@ -161,9 +163,13 @@ export class AuthService {
   async refreshToken(refreshToken: string): Promise<{ token: string }> {
     const jwtSecret        = this.configService.getOrThrow<string>('JWT_SECRET');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
-    let payload: any;
+
+    let payload: TokenPayload & { type?: string; exp?: number };
     try {
-      payload = this.jwtService.verify(refreshToken, { secret: jwtRefreshSecret });
+      payload = this.jwtService.verify(refreshToken, {
+        secret:     jwtRefreshSecret,
+        algorithms: ['HS256'],
+      });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
@@ -171,26 +177,22 @@ export class AuthService {
     if (payload.type !== 'refresh')
       throw new UnauthorizedException('Not a refresh token');
 
-    // 2. Check blacklist
     if (this.redis) {
       const blacklisted = await this.redis.get(`blacklist:${refreshToken}`);
       if (blacklisted) throw new UnauthorizedException('Refresh token already used');
     }
 
-    // 3. Blacklist old refresh token
-    const ttl = payload.exp - Math.floor(Date.now() / 1000);
+    const ttl = (payload.exp ?? 0) - Math.floor(Date.now() / 1000);
     if (this.redis && ttl > 0) {
       await this.redis.setex(`blacklist:${refreshToken}`, ttl, '1');
     }
 
-    // 4. Get user
     const user = await this.prisma.user.findUnique({
       where:  { id: payload.sub },
       select: { id: true, pi_uid: true, pi_username: true },
     });
     if (!user) throw new UnauthorizedException('User not found');
 
-    // 5. New access token — algorithm من الـ module config
     const expiresIn      = this.configService.get<string>('JWT_EXPIRES_IN') ?? 86400;
     const newAccessToken = this.jwtService.sign(
       { sub: user.id, pi_uid: user.pi_uid, pi_username: user.pi_username },
@@ -204,12 +206,30 @@ export class AuthService {
   // ── Logout — Blacklist token ──────────────────────────────
   async logout(token: string): Promise<{ success: boolean }> {
     if (!this.redis) return { success: true };
+
+    const FALLBACK_TTL = 86400;
+
     try {
-      const payload: any = this.jwtService.decode(token);
+      // ✅ P0-7: verify() بدل decode() — لو forged JWT نستخدم fallback TTL
+      let payload: TokenPayload & { exp?: number } | null = null;
+      try {
+        payload = this.jwtService.verify<TokenPayload & { exp?: number }>(token, {
+          algorithms: ['HS256'],
+        });
+      } catch {
+        // Token invalid/forged — blacklist بـ fallback TTL
+        await this.redis.setex(`blacklist:${token}`, FALLBACK_TTL, '1');
+        this.logger.log('Invalid token blacklisted with fallback TTL');
+        return { success: true };
+      }
+
       if (payload?.exp) {
         const ttl = payload.exp - Math.floor(Date.now() / 1000);
-        if (ttl > 0) await this.redis.setex(`blacklist:${token}`, ttl, '1');
+        if (ttl > 0) {
+          await this.redis.setex(`blacklist:${token}`, ttl, '1');
+        }
       }
+
       this.logger.log(`Token blacklisted for user: ${payload?.sub}`);
       return { success: true };
     } catch {
@@ -218,7 +238,10 @@ export class AuthService {
   }
 
   // ── Build Auth Response ───────────────────────────────────
-  private buildAuthResponse(user: any, isNewUser: boolean): AuthResponse {
+  private buildAuthResponse(
+    user: { id: string; pi_uid: string | null; pi_username: string | null; role?: string; created_at?: Date },
+    isNewUser: boolean,
+  ): AuthResponse {
     const jwtSecret        = this.configService.getOrThrow<string>('JWT_SECRET');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET', jwtSecret)!;
 
@@ -237,10 +260,8 @@ export class AuthService {
       pi_username: user.pi_username ?? undefined,
     };
 
-    // ── Access Token — algorithm بيتحدد من الـ module config ──
     const accessToken = this.jwtService.sign(payload, { expiresIn });
 
-    // ── Refresh Token — always HS256 ──────────────────────────
     const refreshToken = this.jwtService.sign(
       { sub: user.id, type: 'refresh' },
       { secret: jwtRefreshSecret, expiresIn: refreshExpiresIn },
@@ -260,4 +281,4 @@ export class AuthService {
       tokens: { accessToken, refreshToken },
     };
   }
-}
+                                                                 }
