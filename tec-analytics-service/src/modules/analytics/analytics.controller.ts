@@ -1,4 +1,5 @@
-import {
+iimport { timingSafeEqual } from 'crypto';
+  mport {
   Controller,
   Get,
   Query,
@@ -20,7 +21,9 @@ export class AnalyticsController {
   private authorize(authorization?: string, internalKey?: string): void {
     // ✅ Inter-service calls via x-internal-key
     const secret = process.env.INTERNAL_SECRET;
-    if (secret && internalKey === secret) return;
+    if (secret && typeof internalKey === 'string' &&
+    internalKey.length === secret.length &&
+    timingSafeEqual(Buffer.from(internalKey), Buffer.from(secret))) return;
 
     // ✅ User calls via JWT Bearer token
     if (!authorization?.startsWith('Bearer ')) {
