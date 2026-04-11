@@ -54,22 +54,7 @@ export class ProxyService {
       target:      process.env.ANALYTICS_SERVICE_URL || 'https://analytics-service-production-c310.up.railway.app',
       pathRewrite: { '^/api/v1/analytics': '/analytics', '^/api/analytics': '/analytics' },
     },
-    fundx: {
-      target:      process.env.FUNDX_SERVICE_URL || 'https://fundx-service.up.railway.app',
-      pathRewrite: { '^/api/v1/fundx': '', '^/api/fundx': '' },
-    },
-    nexus: {
-      target:      process.env.NEXUS_SERVICE_URL || 'https://nexus-service.up.railway.app',
-      pathRewrite: { '^/api/v1/nexus': '', '^/api/nexus': '' },
-    },
-    domains: {
-      target:      process.env.DOMAIN_SERVICE_URL || 'https://domain-service.up.railway.app',
-      pathRewrite: { '^/api/v1/domains': '', '^/api/domains': '' },
-    },
-    tokens: {
-      target:      process.env.TOKEN_SERVICE_URL || 'https://token-service.up.railway.app',
-      pathRewrite: { '^/api/v1/tokens': '', '^/api/tokens': '' },
-    },
+    // ✅ P3-2: fundx, nexus, domains, tokens removed — no code exists yet
   };
 
   public registerProxies(app: Application) {
@@ -129,10 +114,8 @@ export class ProxyService {
           if (auth)   proxyReq.setHeader('Authorization', auth);
           if (secret) proxyReq.setHeader('x-internal-key', secret);
 
-          // ✅ API version header
           proxyReq.setHeader('x-api-version', versioned ? 'v1' : 'legacy');
 
-          // ✅ Generate requestId لو مش موجود — distributed tracing
           const requestId = (req.headers['x-request-id'] as string) ?? randomUUID();
           req.headers['x-request-id'] = requestId;
           proxyReq.setHeader('x-request-id', requestId);
@@ -170,4 +153,4 @@ export class ProxyService {
       return count + (1 + aliases) * 2;
     }, 0);
   }
-          }
+                   }
