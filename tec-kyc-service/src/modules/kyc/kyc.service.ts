@@ -143,27 +143,29 @@ export class KycService {
         action,
         from_status: fromStatus,
         to_status:   toStatus,
-        metadata:    (metadata ?? {}) as Record<string, unknown>,
+        // ✅ JSON.parse(JSON.stringify()) يحول Record إلى InputJsonValue
+        metadata:    metadata ? JSON.parse(JSON.stringify(metadata)) : undefined,
       },
     });
   }
 
-  // ✅ P0-6: shared Redis publisher بدل new Redis() per call
+  // ✅ P0-6: إنشاء Redis connection مؤقت فقط عند الحاجة
   private async emitKycVerified(userId: string, level: string): Promise<void> {
     try {
       const redisUrl = process.env.REDIS_URL;
       if (!redisUrl) return;
 
-      const { publishEvent } = await import('@yasser172/tec-shared');
-      await publishEvent('kyc.verified', {
-        userId,
-        level,
-        timestamp: new Date().toISOString(),
-      });
-
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Redis  = require('ioredis');
+      const client = new Redis(redisUrl, { maxRetriesPerRequest: 1 });
+      await client.xadd(
+        'kyc.verified', '*',
+        'data', JSON.stringify({ userId, level, timestamp: new Date().toISOString() }),
+      );
+      await client.quit();
       logger.info({ userId }, '[KycService] kyc.verified event emitted');
     } catch (err: unknown) {
       logger.warn({ err }, '[KycService] Failed to emit kyc.verified');
     }
   }
-  }
+        }
