@@ -147,7 +147,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       max-parallel: 4
-      fail-fast: false
+      fail-fast:    false
       matrix:
         service:
           - tec-api-gateway
@@ -174,7 +174,8 @@ jobs:
             exit 0
           fi
           echo "Deploying ${{ matrix.service }}..."
-          railway up --service ${{ matrix.service }} --environment production --detach --ci || true
+          # ✅ P1-14: حذف || true — deploy failures تبلوك الـ CI
+          railway up --service ${{ matrix.service }} --environment production --detach --ci
 
   notify:
     name: Notify on Failure
