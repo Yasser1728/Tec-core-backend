@@ -25,6 +25,9 @@ RUN npm install --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+USER appuser
+
 EXPOSE 5010
 
 CMD ["node", "dist/main.js"]
