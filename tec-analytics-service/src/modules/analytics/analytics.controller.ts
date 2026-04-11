@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'crypto';
-  mport {
+import {
   Controller,
   Get,
   Query,
@@ -7,7 +7,7 @@ import { timingSafeEqual } from 'crypto';
   Headers,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService }      from '@nestjs/jwt';
+import { JwtService }       from '@nestjs/jwt';
 import { AnalyticsService } from './analytics.service';
 
 // ── Internal or JWT auth guard ────────────────────────────
@@ -19,13 +19,14 @@ export class AnalyticsController {
   ) {}
 
   private authorize(authorization?: string, internalKey?: string): void {
-    // ✅ Inter-service calls via x-internal-key
     const secret = process.env.INTERNAL_SECRET;
-    if (secret && typeof internalKey === 'string' &&
-    internalKey.length === secret.length &&
-    timingSafeEqual(Buffer.from(internalKey), Buffer.from(secret))) return;
+    if (
+      secret &&
+      typeof internalKey === 'string' &&
+      internalKey.length === secret.length &&
+      timingSafeEqual(Buffer.from(internalKey), Buffer.from(secret))
+    ) return;
 
-    // ✅ User calls via JWT Bearer token
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Authentication required');
     }
@@ -37,7 +38,6 @@ export class AnalyticsController {
     }
   }
 
-  // GET /analytics/overview
   @Get('overview')
   async getOverview(
     @Headers('authorization')  authorization?: string,
@@ -48,7 +48,6 @@ export class AnalyticsController {
     return { success: true, data };
   }
 
-  // GET /analytics/payments
   @Get('payments')
   async getPayments(
     @Headers('authorization')  authorization?: string,
@@ -59,7 +58,6 @@ export class AnalyticsController {
     return { success: true, data };
   }
 
-  // GET /analytics/users
   @Get('users')
   async getUsers(
     @Headers('authorization')  authorization?: string,
@@ -70,7 +68,6 @@ export class AnalyticsController {
     return { success: true, data };
   }
 
-  // GET /analytics/events
   @Get('events')
   async getEvents(
     @Headers('authorization')  authorization?: string,
