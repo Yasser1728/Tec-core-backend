@@ -29,6 +29,9 @@ RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
 
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+USER appuser
+
 EXPOSE 5005
 
 CMD ["sh", "-c", "npx prisma db push && node dist/main.js"]
