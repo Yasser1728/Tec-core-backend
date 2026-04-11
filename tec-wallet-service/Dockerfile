@@ -1,7 +1,3 @@
-# Multi-stage build for TEC Wallet Service
-# Build context: tec-wallet-service/
-
-# Stage 1: Build
 FROM node:20-slim AS builder
 
 WORKDIR /app
@@ -13,11 +9,9 @@ COPY package*.json ./
 RUN npm install --ignore-scripts
 
 COPY . .
-
 RUN npx prisma generate && npm run build
 
-# Stage 2: Production
-FROM node:20-slim
+FROM node:20-slim AS production
 
 WORKDIR /app
 
@@ -35,6 +29,9 @@ COPY prisma/schema.prisma              ./prisma/schema.prisma
 COPY prisma/migrations                 ./prisma/migrations
 COPY docker-entrypoint.sh             ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
+
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+USER appuser
 
 ARG PORT=5002
 ENV PORT=${PORT}
