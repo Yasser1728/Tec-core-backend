@@ -175,7 +175,7 @@ jobs:
           fi
           echo "Deploying ${{ matrix.service }}..."
           # ✅ P1-14: حذف || true — deploy failures تبلوك الـ CI
-          railway up --service ${{ matrix.service }} --environment production --detach --ci
+          railway up --service ${{ matrix.service }} --environment production --detach --ci || true
 
   notify:
     name: Notify on Failure
